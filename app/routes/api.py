@@ -213,7 +213,17 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
                 "components": components_by_agent.get(row["agent_id"], {}),
             }
         )
-    return agents
+    if agent_id:
+        return agents
+
+    agent_ids = {agent["agent_id"] for agent in agents}
+    deduped: list[dict] = []
+    for agent in agents:
+        canonical = agent["agent_id"].removeprefix("lucid.agent.")
+        if canonical != agent["agent_id"] and canonical in agent_ids:
+            continue
+        deduped.append(agent)
+    return deduped
 
 
 def _flatten_logs(rows: list[dict]) -> list[dict]:
