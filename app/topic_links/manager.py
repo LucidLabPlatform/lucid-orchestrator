@@ -126,6 +126,8 @@ class TopicLinkManager:
         if len(actions) != 1:
             return None
         action = actions[0]
+        if not isinstance(action, dict):
+            return None
         if action.get("function") != "republish":
             return None
 
@@ -135,6 +137,8 @@ class TopicLinkManager:
             return None
 
         args = action.get("args", {})
+        if not isinstance(args, dict):
+            return None
         target_topic = args.get("topic")
         if not target_topic:
             return None
