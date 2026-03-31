@@ -10,13 +10,16 @@ it, and refresh transparently on 401.
 from __future__ import annotations
 
 import logging
+import re
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
 log = logging.getLogger(__name__)
+_LINK_SQL_RE = re.compile(r'^SELECT\s+(?P<select>.+?)\s+FROM\s+"(?P<source>.+)"$', re.DOTALL)
+_PASS_THROUGH_PAYLOAD = "${payload}"
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -100,7 +103,7 @@ class TopicLinkManager:
             f'SELECT {link.select_clause} '
             f'FROM "{link.source_topic}"'
         )
-        payload_tpl = link.payload_template or "${payload}"
+        payload_tpl = link.payload_template or _PASS_THROUGH_PAYLOAD
         return {
             "sql": sql,
             "actions": [
@@ -116,6 +119,44 @@ class TopicLinkManager:
             ],
             "enable": True,
             "description": f"LUCID topic link: {link.name}",
+        }
+
+    def _parse_link_rule(self, rule: dict[str, Any]) -> dict[str, Any] | None:
+        actions = rule.get("actions", [])
+        if len(actions) != 1:
+            return None
+        action = actions[0]
+        if action.get("function") != "republish":
+            return None
+
+        sql = str(rule.get("sql", "")).strip()
+        match = _LINK_SQL_RE.match(sql)
+        if not match:
+            return None
+
+        args = action.get("args", {})
+        target_topic = args.get("topic")
+        if not target_topic:
+            return None
+
+        description = str(rule.get("description") or "").strip()
+        name = description.removeprefix("LUCID topic link: ").strip() if description else ""
+        if not name:
+            name = str(rule.get("id", "topic-link"))
+
+        payload_template = args.get("payload")
+        if payload_template == _PASS_THROUGH_PAYLOAD:
+            payload_template = None
+
+        return {
+            "emqx_rule_id": rule.get("id"),
+            "name": name,
+            "source_topic": match.group("source").strip(),
+            "target_topic": str(target_topic),
+            "select_clause": match.group("select").strip(),
+            "payload_template": payload_template,
+            "qos": int(args.get("qos", 0) or 0),
+            "enabled": bool(rule.get("enable", True)),
         }
 
     # ------------------------------------------------------------------
@@ -175,3 +216,19 @@ class TopicLinkManager:
         resp = self._request("GET", f"/rules/{rule_id}")
         resp.raise_for_status()
         return resp.json()
+
+    def list_links(self) -> list[dict[str, Any]]:
+        """Return all broker rules that can be represented as topic links."""
+        resp = self._request("GET", "/rules?limit=500")
+        resp.raise_for_status()
+        payload = resp.json()
+        rules = payload.get("data", payload) if isinstance(payload, dict) else payload
+        parsed: list[dict[str, Any]] = []
+        for item in rules:
+            if not isinstance(item, dict):
+                continue
+            link = self._parse_link_rule(item)
+            if link is not None:
+                parsed.append(link)
+        parsed.sort(key=lambda item: (item["name"], item["emqx_rule_id"] or ""))
+        return parsed

@@ -54,3 +54,6 @@ class AuthService:
 
     def delete_cc(self) -> None:
         self._request("DELETE", "/cc")
+
+    def get_mqtt_state(self) -> dict:
+        return self._request("GET", "/mqtt-state").json()

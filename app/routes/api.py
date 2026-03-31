@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from app import db as DB
 from app.auth_service import AuthServiceError
+from app.sync import TOPIC_LINKS_DOMAIN, sync_mqtt_users, sync_topic_links
 from app.topic_links.manager import TopicLinkDef
 
 log = logging.getLogger(__name__)
@@ -47,30 +48,6 @@ async def _broadcast_ws(ws_clients: set, event: dict) -> None:
 
 def _raise_auth_error(exc: AuthServiceError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.detail)
-
-
-def _reconcile_users(app: Request | object, strict: bool = False) -> None:
-    auth = app.app.state.auth if isinstance(app, Request) else app.state.auth
-    cc_username = app.app.state.cc_username if isinstance(app, Request) else app.state.cc_username
-    discovered_agents: list[str] = []
-
-    try:
-        for item in auth.list_agents():
-            username = item.get("user_id") or item.get("username")
-            if username:
-                discovered_agents.append(username)
-    except AuthServiceError as exc:
-        if strict:
-            _raise_auth_error(exc)
-        log.warning("Skipping auth user reconciliation: %s", exc)
-
-    now = _now()
-    with DB.connect() as conn:
-        for agent_id in discovered_agents:
-            DB.upsert_user_metadata(conn, agent_id, "agent", created_at=None)
-            DB.ensure_agent(conn, agent_id, now)
-        DB.upsert_user_metadata(conn, cc_username, "central-command", created_at=None)
-        conn.commit()
 
 
 def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
@@ -367,6 +344,11 @@ def delete_agent(agent_id: str, request: Request):
     except AuthServiceError as exc:
         _raise_auth_error(exc)
 
+    try:
+        sync_mqtt_users(request.app, strict=True)
+    except AuthServiceError as exc:
+        _raise_auth_error(exc)
+
     with DB.connect() as conn:
         DB.purge_agent_data(conn, agent_id)
         DB.delete_user_metadata(conn, agent_id)
@@ -464,26 +446,18 @@ async def internal_command(body: InternalCommandRequest, request: Request):
 
 @router.get("/users")
 def list_users(request: Request):
-    _reconcile_users(request, strict=False)
+    sync_mqtt_users(request.app, strict=False)
     with DB.connect() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
-                SELECT username, role, created_at
-                FROM users
-                WHERE role IN ('agent', 'central-command')
-                ORDER BY role, created_at NULLS LAST, username
-                """
-            )
-            rows = cur.fetchall()
-    return [dict(row) for row in rows]
+        rows = DB.list_mqtt_users(conn, roles=("agent", "central-command"))
+    return [row for row in rows if row.get("has_password_user", True)]
 
 
 @router.post("/users/agent")
 def create_agent_user(body: AddAgentRequest, request: Request):
-    ts = _now()
+    sync_mqtt_users(request.app, strict=False)
     with DB.connect() as conn:
-        if DB.get_user_role(conn, body.agent_id) is not None:
+        existing = DB.get_mqtt_user(conn, body.agent_id)
+        if existing is not None and existing.get("has_password_user", True):
             raise HTTPException(status_code=409, detail=f"User '{body.agent_id}' already exists")
 
     try:
@@ -491,10 +465,10 @@ def create_agent_user(body: AddAgentRequest, request: Request):
     except AuthServiceError as exc:
         _raise_auth_error(exc)
 
-    with DB.connect() as conn:
-        DB.ensure_agent(conn, body.agent_id, ts)
-        DB.upsert_user_metadata(conn, body.agent_id, "agent", created_at=ts)
-        conn.commit()
+    try:
+        sync_mqtt_users(request.app, strict=True)
+    except AuthServiceError as exc:
+        _raise_auth_error(exc)
 
     return {"username": body.agent_id, "role": "agent", "password": result["password"]}
 
@@ -506,17 +480,20 @@ def create_cc_user(request: Request):
     except AuthServiceError as exc:
         _raise_auth_error(exc)
 
+    try:
+        sync_mqtt_users(request.app, strict=True)
+    except AuthServiceError as exc:
+        _raise_auth_error(exc)
     username = result["username"]
-    with DB.connect() as conn:
-        DB.upsert_user_metadata(conn, username, "central-command", created_at=_now())
-        conn.commit()
     return {"username": username, "role": "central-command", "password": result["password"]}
 
 
 @router.delete("/users/{username}")
 def delete_user(username: str, request: Request):
+    sync_mqtt_users(request.app, strict=False)
     with DB.connect() as conn:
-        role = DB.get_user_role(conn, username)
+        row = DB.get_mqtt_user(conn, username)
+        role = row["role"] if row and row.get("has_password_user", True) else None
     if role is None:
         raise HTTPException(status_code=404, detail=f"User '{username}' not found")
 
@@ -532,16 +509,19 @@ def delete_user(username: str, request: Request):
     except AuthServiceError as exc:
         _raise_auth_error(exc)
 
-    with DB.connect() as conn:
-        DB.delete_user_metadata(conn, username)
-        conn.commit()
+    try:
+        sync_mqtt_users(request.app, strict=True)
+    except AuthServiceError as exc:
+        _raise_auth_error(exc)
     return {"deleted": username}
 
 
 @router.post("/users/{username}/rotate-password", response_model=RotatePasswordResponse)
 def rotate_password(username: str, request: Request):
+    sync_mqtt_users(request.app, strict=False)
     with DB.connect() as conn:
-        role = DB.get_user_role(conn, username)
+        row = DB.get_mqtt_user(conn, username)
+        role = row["role"] if row and row.get("has_password_user", True) else None
     if role is None:
         raise HTTPException(status_code=404, detail=f"User '{username}' not found")
 
@@ -558,9 +538,10 @@ def rotate_password(username: str, request: Request):
     except AuthServiceError as exc:
         _raise_auth_error(exc)
 
-    with DB.connect() as conn:
-        DB.upsert_user_metadata(conn, username, role, created_at=_now())
-        conn.commit()
+    try:
+        sync_mqtt_users(request.app, strict=True)
+    except AuthServiceError as exc:
+        _raise_auth_error(exc)
     return RotatePasswordResponse(username=username, role=role, password=result["password"])
 
 
@@ -588,6 +569,12 @@ def auth_log(limit: int = 200):
         }
         for row in rows
     ]
+
+
+@router.get("/sync-state")
+def sync_state():
+    with DB.connect() as conn:
+        return DB.get_sync_state(conn)
 
 
 @router.get("/schema/tables")
@@ -663,29 +650,22 @@ def schema_relations():
 
 
 @router.get("/topic-links")
-def list_topic_links():
+def list_topic_links(request: Request):
+    sync_topic_links(request.app, strict=False)
     with DB.connect() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
-                SELECT id, name, source_topic, target_topic, select_clause,
-                       payload_template, qos, emqx_rule_id, enabled, created_at
-                FROM topic_links
-                ORDER BY created_at DESC, name
-                """
-            )
-            rows = cur.fetchall()
-    return [dict(row) for row in rows]
+        return DB.list_topic_links(conn)
 
 
 @router.get("/topic-links/{link_id}")
-def get_topic_link(link_id: str):
+def get_topic_link(link_id: str, request: Request):
+    sync_topic_links(request.app, strict=False)
     with DB.connect() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
                 SELECT id, name, source_topic, target_topic, select_clause,
-                       payload_template, qos, emqx_rule_id, enabled, created_at
+                       payload_template, qos, emqx_rule_id, enabled, created_at,
+                       updated_at, last_synced_at, sync_status, last_error
                 FROM topic_links
                 WHERE id = %s
                 """,
@@ -726,6 +706,10 @@ async def create_topic_link(body: TopicLinkCreateRequest, request: Request):
         "emqx_rule_id": rule_id,
         "enabled": True,
         "created_at": created_at,
+        "updated_at": created_at,
+        "last_synced_at": created_at,
+        "sync_status": "synced",
+        "last_error": None,
     }
 
     with DB.connect() as conn:
@@ -734,9 +718,10 @@ async def create_topic_link(body: TopicLinkCreateRequest, request: Request):
                 """
                 INSERT INTO topic_links (
                     id, name, source_topic, target_topic, select_clause,
-                    payload_template, qos, emqx_rule_id, enabled, created_at
+                    payload_template, qos, emqx_rule_id, enabled, created_at,
+                    updated_at, last_synced_at, sync_status, last_error
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     row["id"],
@@ -749,8 +734,13 @@ async def create_topic_link(body: TopicLinkCreateRequest, request: Request):
                     row["emqx_rule_id"],
                     row["enabled"],
                     row["created_at"],
+                    row["updated_at"],
+                    row["last_synced_at"],
+                    row["sync_status"],
+                    row["last_error"],
                 ),
             )
+            DB.set_sync_state(conn, TOPIC_LINKS_DOMAIN, status="synced", synced_at=created_at, error=None)
         conn.commit()
 
     await _broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_created", "link_id": link_id})
@@ -781,7 +771,19 @@ async def activate_topic_link(link_id: str, request: Request):
 
     with DB.connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("UPDATE topic_links SET enabled = true WHERE id = %s", (link_id,))
+            cur.execute(
+                """
+                UPDATE topic_links
+                SET enabled = true,
+                    updated_at = %s,
+                    last_synced_at = %s,
+                    sync_status = 'synced',
+                    last_error = NULL
+                WHERE id = %s
+                """,
+                (_now(), _now(), link_id),
+            )
+            DB.set_sync_state(conn, TOPIC_LINKS_DOMAIN, status="synced", synced_at=_now(), error=None)
         conn.commit()
 
     await _broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_updated", "link_id": link_id})
@@ -803,7 +805,19 @@ async def deactivate_topic_link(link_id: str, request: Request):
 
     with DB.connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("UPDATE topic_links SET enabled = false WHERE id = %s", (link_id,))
+            cur.execute(
+                """
+                UPDATE topic_links
+                SET enabled = false,
+                    updated_at = %s,
+                    last_synced_at = %s,
+                    sync_status = 'synced',
+                    last_error = NULL
+                WHERE id = %s
+                """,
+                (_now(), _now(), link_id),
+            )
+            DB.set_sync_state(conn, TOPIC_LINKS_DOMAIN, status="synced", synced_at=_now(), error=None)
         conn.commit()
 
     await _broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_updated", "link_id": link_id})
@@ -825,6 +839,7 @@ async def delete_topic_link(link_id: str, request: Request):
     with DB.connect() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM topic_links WHERE id = %s", (link_id,))
+            DB.set_sync_state(conn, TOPIC_LINKS_DOMAIN, status="synced", synced_at=_now(), error=None)
         conn.commit()
 
     await _broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_deleted", "link_id": link_id})

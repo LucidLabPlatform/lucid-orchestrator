@@ -11,7 +11,8 @@ from app import db as DB
 from app.broadcaster import Broadcaster
 from app.experiments.request_response import RequestResponseManager
 from app.mqtt_bridge import MqttBridge
-from app.routes.api import _reconcile_users, router as api_router
+from app.routes.api import router as api_router
+from app.sync import sync_forever, sync_mqtt_users, sync_topic_links
 from app.topic_links.manager import TopicLinkManager
 
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI):
     cc_username = os.environ["LUCID_MQTT_USERNAME"]
     tlm = TopicLinkManager(emqx_api_url, emqx_api_user, emqx_api_pass)
     auth = AuthService()
+    sync_interval_s = float(os.environ.get("ORCHESTRATOR_SYNC_INTERVAL_S", "5"))
 
     event_queue: queue.Queue = queue.Queue(maxsize=10_000)
     ws_clients: set = set()
@@ -46,11 +48,14 @@ async def lifespan(app: FastAPI):
     app.state.auth = auth
     app.state.cc_username = cc_username
 
-    _reconcile_users(app, strict=False)
+    sync_mqtt_users(app, strict=False)
+    sync_topic_links(app, strict=False)
+    sync_task = asyncio.create_task(sync_forever(app, interval_s=sync_interval_s))
 
     log.info("lucid-orchestrator started")
     yield
 
+    sync_task.cancel()
     broadcaster.stop()
     bc_task.cancel()
     bridge.stop()
