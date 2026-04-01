@@ -43,19 +43,24 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
                 a.agent_id,
                 a.first_seen_ts,
                 a.last_seen_ts,
-                s.state,
+                s.state AS status_state,
                 s.connected_since_ts,
                 s.uptime_s,
                 s.version AS status_version,
+                s.received_ts AS status_received_ts,
                 st.cpu_percent,
                 st.memory_percent,
                 st.disk_percent,
                 st.components AS state_components,
+                st.received_ts AS state_received_ts,
                 m.version AS metadata_version,
                 m.platform,
                 m.architecture,
+                m.received_ts AS metadata_received_ts,
                 cfg.heartbeat_s,
+                cfg.received_ts AS cfg_received_ts,
                 cfg_logging.log_level AS cfg_log_level,
+                cfg_logging.received_ts AS cfg_logging_received_ts,
                 cfg_telemetry.cpu_pct_enabled,
                 cfg_telemetry.cpu_pct_interval_s,
                 cfg_telemetry.cpu_pct_threshold,
@@ -64,7 +69,8 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
                 cfg_telemetry.memory_pct_threshold,
                 cfg_telemetry.disk_pct_enabled,
                 cfg_telemetry.disk_pct_interval_s,
-                cfg_telemetry.disk_pct_threshold
+                cfg_telemetry.disk_pct_threshold,
+                cfg_telemetry.received_ts AS cfg_telemetry_received_ts
             FROM agents a
             LEFT JOIN agent_status s ON s.agent_id = a.agent_id
             LEFT JOIN agent_state st ON st.agent_id = a.agent_id
@@ -92,12 +98,18 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
                 c.first_seen_ts,
                 c.last_seen_ts,
                 cs.state AS status_state,
+                cs.received_ts AS status_received_ts,
                 cm.version AS metadata_version,
                 cm.capabilities,
+                cm.received_ts AS metadata_received_ts,
                 cst.payload AS state_payload,
+                cst.received_ts AS state_received_ts,
                 ccfg.payload AS cfg_payload,
+                ccfg.received_ts AS cfg_received_ts,
                 ccfg_log.log_level AS cfg_log_level,
-                ccfg_tel.payload AS cfg_telemetry_payload
+                ccfg_log.received_ts AS cfg_logging_received_ts,
+                ccfg_tel.payload AS cfg_telemetry_payload,
+                ccfg_tel.received_ts AS cfg_telemetry_received_ts
             FROM components c
             LEFT JOIN component_status cs
                 ON cs.agent_id = c.agent_id AND cs.component_id = c.component_id
@@ -126,22 +138,33 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
         if row["cfg_telemetry_payload"] is not None:
             component_cfg = {**component_cfg, "telemetry": row["cfg_telemetry_payload"]}
 
+        has_comp_status = row["status_received_ts"] is not None
+        has_comp_metadata = row["metadata_received_ts"] is not None
+        has_comp_state = row["state_received_ts"] is not None
+        has_comp_cfg = any(
+            row[key] is not None
+            for key in ("cfg_received_ts", "cfg_logging_received_ts", "cfg_telemetry_received_ts")
+        )
+
         components_by_agent.setdefault(row["agent_id"], {})[row["component_id"]] = {
             "component_id": row["component_id"],
             "first_seen_ts": row["first_seen_ts"],
             "last_seen_ts": row["last_seen_ts"],
-            "status": {"state": row["status_state"]} if row["status_state"] is not None else None,
+            "status": {"state": row["status_state"], "received_ts": row["status_received_ts"]} if has_comp_status else None,
             "metadata": {
                 "version": row["metadata_version"],
                 "capabilities": row["capabilities"],
-            } if row["metadata_version"] is not None or row["capabilities"] is not None else None,
-            "state": row["state_payload"],
-            "cfg": component_cfg or None,
+                "received_ts": row["metadata_received_ts"],
+            } if has_comp_metadata else None,
+            "state": row["state_payload"] if has_comp_state else None,
+            "cfg": (component_cfg if component_cfg else {"received_ts": max(
+                ts for ts in (row["cfg_received_ts"], row["cfg_logging_received_ts"], row["cfg_telemetry_received_ts"]) if ts is not None
+            )}) if has_comp_cfg else None,
         }
 
     agents: list[dict] = []
     for row in agent_rows:
-        cfg = {}
+        cfg: dict = {}
         if row["heartbeat_s"] is not None:
             cfg["heartbeat_s"] = row["heartbeat_s"]
         if row["cfg_log_level"] is not None:
@@ -166,32 +189,47 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
         if any(value is not None for metric in telemetry_cfg.values() for value in metric.values()):
             cfg["telemetry"] = telemetry_cfg
 
+        has_cfg = any(
+            row[key] is not None
+            for key in ("cfg_received_ts", "cfg_logging_received_ts", "cfg_telemetry_received_ts")
+        )
+        has_status = any(
+            row[key] is not None
+            for key in ("status_state", "connected_since_ts", "uptime_s", "status_version")
+        )
+        has_state = row["state_received_ts"] is not None
+        has_metadata = row["metadata_received_ts"] is not None
+
         agents.append(
             {
                 "agent_id": row["agent_id"],
                 "first_seen_ts": row["first_seen_ts"],
                 "last_seen_ts": row["last_seen_ts"],
                 "status": {
-                    "state": row["state"],
+                    "state": row["status_state"],
                     "connected_since_ts": row["connected_since_ts"],
                     "uptime_s": row["uptime_s"],
                     "version": row["status_version"],
-                } if row["state"] is not None else None,
-                "state": {
-                    "cpu_percent": row["cpu_percent"],
-                    "memory_percent": row["memory_percent"],
-                    "disk_percent": row["disk_percent"],
-                    "components": row["state_components"],
-                } if any(
-                    row[key] is not None
-                    for key in ("cpu_percent", "memory_percent", "disk_percent", "state_components")
-                ) else None,
+                    "received_ts": row["status_received_ts"],
+                } if (has_status or row["status_received_ts"] is not None) else None,
+                "state": (
+                    {
+                        "cpu_percent": row["cpu_percent"],
+                        "memory_percent": row["memory_percent"],
+                        "disk_percent": row["disk_percent"],
+                        "components": row["state_components"],
+                        "received_ts": row["state_received_ts"],
+                    }
+                ) if has_state else None,
                 "metadata": {
                     "version": row["metadata_version"],
                     "platform": row["platform"],
                     "architecture": row["architecture"],
-                } if any(row[key] is not None for key in ("metadata_version", "platform", "architecture")) else None,
-                "cfg": cfg or None,
+                    "received_ts": row["metadata_received_ts"],
+                } if has_metadata else None,
+                "cfg": (cfg if cfg else {"received_ts": max(
+                    ts for ts in (row["cfg_received_ts"], row["cfg_logging_received_ts"], row["cfg_telemetry_received_ts"]) if ts is not None
+                )}) if has_cfg else None,
                 "components": components_by_agent.get(row["agent_id"], {}),
             }
         )
