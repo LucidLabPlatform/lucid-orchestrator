@@ -111,9 +111,60 @@ def init_schema(url: str | None = None) -> None:
             cur.execute("ALTER TABLE topic_links ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ")
             cur.execute("ALTER TABLE topic_links ADD COLUMN IF NOT EXISTS sync_status TEXT NOT NULL DEFAULT 'pending'")
             cur.execute("ALTER TABLE topic_links ADD COLUMN IF NOT EXISTS last_error TEXT")
+            cur.execute("ALTER TABLE topic_links ADD COLUMN IF NOT EXISTS owner_type TEXT NOT NULL DEFAULT 'manual'")
+            cur.execute("ALTER TABLE topic_links ADD COLUMN IF NOT EXISTS owner_id TEXT")
             cur.execute("CREATE INDEX IF NOT EXISTS topic_links_enabled_idx ON topic_links(enabled)")
             cur.execute("CREATE INDEX IF NOT EXISTS topic_links_created_at_idx ON topic_links(created_at DESC)")
             cur.execute("CREATE INDEX IF NOT EXISTS topic_links_last_synced_idx ON topic_links(last_synced_at DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS topic_links_owner_idx ON topic_links(owner_type, owner_id)")
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_templates (
+                    id                TEXT PRIMARY KEY,
+                    name              TEXT NOT NULL,
+                    version           TEXT NOT NULL DEFAULT '1.0.0',
+                    description       TEXT NOT NULL DEFAULT '',
+                    parameters_schema JSONB NOT NULL DEFAULT '{}',
+                    definition        JSONB NOT NULL,
+                    tags              TEXT[] NOT NULL DEFAULT '{}',
+                    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_runs (
+                    id          TEXT PRIMARY KEY,
+                    template_id TEXT NOT NULL REFERENCES experiment_templates,
+                    status      TEXT NOT NULL DEFAULT 'pending',
+                    parameters  JSONB NOT NULL DEFAULT '{}',
+                    started_at  TIMESTAMPTZ,
+                    ended_at    TIMESTAMPTZ,
+                    error       TEXT,
+                    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_steps (
+                    id               BIGSERIAL PRIMARY KEY,
+                    run_id           TEXT NOT NULL REFERENCES experiment_runs,
+                    step_index       INTEGER NOT NULL,
+                    step_name        TEXT NOT NULL,
+                    agent_id         TEXT,
+                    component_id     TEXT,
+                    action           TEXT,
+                    request_payload  JSONB,
+                    response_payload JSONB,
+                    status           TEXT NOT NULL DEFAULT 'pending',
+                    attempt          INTEGER NOT NULL DEFAULT 0,
+                    started_at       TIMESTAMPTZ,
+                    ended_at         TIMESTAMPTZ,
+                    duration_ms      INTEGER
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_exp_runs_template ON experiment_runs(template_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_exp_runs_status ON experiment_runs(status)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_exp_steps_run_idx ON experiment_steps(run_id, step_index)")
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS sync_state (
@@ -300,15 +351,107 @@ def list_topic_links(conn: psycopg2.extensions.connection) -> list[dict]:
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
             """
-            SELECT id, name, source_topic, target_topic, select_clause,
-                   payload_template, qos, emqx_rule_id, enabled, created_at,
-                   updated_at, last_synced_at, sync_status, last_error
-            FROM topic_links
-            ORDER BY created_at DESC, name
+            SELECT
+                tl.id,
+                tl.name,
+                tl.source_topic,
+                tl.target_topic,
+                tl.select_clause,
+                tl.payload_template,
+                tl.qos,
+                tl.emqx_rule_id,
+                tl.enabled,
+                tl.created_at,
+                tl.updated_at,
+                tl.last_synced_at,
+                tl.sync_status,
+                tl.last_error,
+                tl.owner_type,
+                tl.owner_id,
+                er.status AS owner_run_status,
+                CASE
+                    WHEN tl.owner_type = 'experiment-run' AND er.status IN ('pending', 'running') THEN TRUE
+                    ELSE FALSE
+                END AS read_only
+            FROM topic_links tl
+            LEFT JOIN experiment_runs er
+              ON tl.owner_type = 'experiment-run'
+             AND tl.owner_id = er.id
+            ORDER BY tl.created_at DESC, tl.name
             """
         )
         rows = cur.fetchall()
     return [dict(row) for row in rows]
+
+
+def get_topic_link(conn: psycopg2.extensions.connection, link_id: str) -> dict | None:
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT
+                tl.id,
+                tl.name,
+                tl.source_topic,
+                tl.target_topic,
+                tl.select_clause,
+                tl.payload_template,
+                tl.qos,
+                tl.emqx_rule_id,
+                tl.enabled,
+                tl.created_at,
+                tl.updated_at,
+                tl.last_synced_at,
+                tl.sync_status,
+                tl.last_error,
+                tl.owner_type,
+                tl.owner_id,
+                er.status AS owner_run_status,
+                CASE
+                    WHEN tl.owner_type = 'experiment-run' AND er.status IN ('pending', 'running') THEN TRUE
+                    ELSE FALSE
+                END AS read_only
+            FROM topic_links tl
+            LEFT JOIN experiment_runs er
+              ON tl.owner_type = 'experiment-run'
+             AND tl.owner_id = er.id
+            WHERE tl.id = %s
+            """,
+            (link_id,),
+        )
+        row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def mark_active_experiment_runs_failed(
+    conn: psycopg2.extensions.connection,
+    *,
+    ended_at: datetime,
+    error: str,
+) -> list[str]:
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT id
+            FROM experiment_runs
+            WHERE status IN ('pending', 'running')
+            ORDER BY created_at
+            """
+        )
+        rows = cur.fetchall()
+        run_ids = [row["id"] for row in rows]
+        if not run_ids:
+            return []
+        cur.execute(
+            """
+            UPDATE experiment_runs
+            SET status = 'failed',
+                ended_at = COALESCE(ended_at, %s),
+                error = COALESCE(error, %s)
+            WHERE status IN ('pending', 'running')
+            """,
+            (ended_at, error),
+        )
+    return run_ids
 
 
 def set_sync_state(

@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
-import uuid
-from datetime import datetime, timezone
 
 import psycopg2.extras
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -14,17 +10,14 @@ from pydantic import BaseModel, Field
 
 from app import db as DB
 from app.auth_service import AuthServiceError
-from app.sync import TOPIC_LINKS_DOMAIN, sync_mqtt_users, sync_topic_links
-from app.topic_links.manager import TopicLinkDef
+from app.command_dispatch import send_command
+from app.events import broadcast_ws
+from app.sync import sync_mqtt_users, sync_topic_links
+from app.topic_links import service as topic_link_service
 
 log = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
 
 def _normalize_auth_result(kind: str, value: str | None) -> str:
     normalized = (value or "").strip().lower()
@@ -33,17 +26,6 @@ def _normalize_auth_result(kind: str, value: str | None) -> str:
     if normalized in {"allow", "authorized", "matched_allow", "ok", "success"}:
         return "allow"
     return "deny"
-
-
-async def _broadcast_ws(ws_clients: set, event: dict) -> None:
-    msg = json.dumps(event)
-    dead = set()
-    for ws in list(ws_clients):
-        try:
-            await asyncio.wait_for(ws.send_text(msg), timeout=2.0)
-        except Exception:
-            dead.add(ws)
-    ws_clients -= dead
 
 
 def _raise_auth_error(exc: AuthServiceError) -> None:
@@ -247,17 +229,7 @@ def _flatten_logs(rows: list[dict]) -> list[dict]:
     return flattened
 
 
-def _command_topic(agent_id: str, action: str, component_id: str | None = None) -> str:
-    if component_id:
-        return f"lucid/agents/{agent_id}/components/{component_id}/cmd/{action}"
-    return f"lucid/agents/{agent_id}/cmd/{action}"
-
-
-def _command_payload(action: str, body: dict, request_id: str) -> dict:
-    return {**body, "action": action, "request_id": request_id}
-
-
-async def _send_command(
+async def _dispatch_command(
     request: Request,
     *,
     agent_id: str,
@@ -267,34 +239,18 @@ async def _send_command(
     wait: bool = False,
     timeout_s: float = 30.0,
 ) -> dict:
-    payload_body = body or {}
-    request_id = str(payload_body.get("request_id") or uuid.uuid4())
-    payload = _command_payload(action, payload_body, request_id)
-    topic = _command_topic(agent_id, action, component_id=component_id)
-    ts = _now()
-
-    with DB.connect() as conn:
-        if component_id:
-            DB.ensure_component(conn, agent_id, component_id, ts)
-        else:
-            DB.ensure_agent(conn, agent_id, ts)
-        conn.commit()
-
-    bridge = request.app.state.bridge
-    if wait:
-        try:
-            result = await request.app.state.rrm.send_and_wait(
-                bridge=bridge,
-                topic=topic,
-                payload=payload,
-                timeout_s=timeout_s,
-            )
-        except asyncio.TimeoutError as exc:
-            raise HTTPException(status_code=504, detail=f"Timed out waiting for {topic}") from exc
-        return {"request_id": request_id, "topic": topic, "result": result}
-
-    bridge.publish(topic, payload)
-    return {"request_id": request_id, "topic": topic}
+    try:
+        return await send_command(
+            request.app,
+            agent_id=agent_id,
+            component_id=component_id,
+            action=action,
+            body=body,
+            wait=wait,
+            timeout_s=timeout_s,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=f"Timed out waiting for agent '{agent_id}'") from exc
 
 
 class AddAgentRequest(BaseModel):
@@ -421,7 +377,7 @@ async def send_agent_command(agent_id: str, action: str, request: Request):
         body = {}
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Command body must be a JSON object")
-    return await _send_command(request, agent_id=agent_id, action=action, body=body)
+    return await _dispatch_command(request, agent_id=agent_id, action=action, body=body)
 
 
 @router.post("/agents/{agent_id}/components/{component_id}/cmd/{action}")
@@ -432,7 +388,7 @@ async def send_component_command(agent_id: str, component_id: str, action: str, 
         body = {}
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Command body must be a JSON object")
-    return await _send_command(
+    return await _dispatch_command(
         request,
         agent_id=agent_id,
         component_id=component_id,
@@ -443,7 +399,7 @@ async def send_component_command(agent_id: str, component_id: str, action: str, 
 
 @router.post("/internal/command")
 async def internal_command(body: InternalCommandRequest, request: Request):
-    return await _send_command(
+    return await _dispatch_command(
         request,
         agent_id=body.agent_id,
         component_id=body.component_id,
@@ -670,189 +626,73 @@ def list_topic_links(request: Request):
 def get_topic_link(link_id: str, request: Request):
     sync_topic_links(request.app, strict=False)
     with DB.connect() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
-                SELECT id, name, source_topic, target_topic, select_clause,
-                       payload_template, qos, emqx_rule_id, enabled, created_at,
-                       updated_at, last_synced_at, sync_status, last_error
-                FROM topic_links
-                WHERE id = %s
-                """,
-                (link_id,),
-            )
-            row = cur.fetchone()
+        row = DB.get_topic_link(conn, link_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Topic link not found")
-    return dict(row)
+    return row
 
 
 @router.post("/topic-links")
 async def create_topic_link(body: TopicLinkCreateRequest, request: Request):
-    link_id = str(uuid.uuid4())
-    link_def = TopicLinkDef(
-        name=body.name,
-        source_topic=body.source_topic,
-        target_topic=body.target_topic,
-        select_clause=body.select_clause,
-        payload_template=body.payload_template,
-        qos=body.qos,
-    )
-
     try:
-        rule_id = request.app.state.tlm.create_link(link_def)
+        row = topic_link_service.create_topic_link(
+            request.app,
+            name=body.name,
+            source_topic=body.source_topic,
+            target_topic=body.target_topic,
+            select_clause=body.select_clause,
+            payload_template=body.payload_template,
+            qos=body.qos,
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    created_at = _now()
-    row = {
-        "id": link_id,
-        "name": body.name,
-        "source_topic": body.source_topic,
-        "target_topic": body.target_topic,
-        "select_clause": body.select_clause,
-        "payload_template": body.payload_template,
-        "qos": body.qos,
-        "emqx_rule_id": rule_id,
-        "enabled": True,
-        "created_at": created_at,
-        "updated_at": created_at,
-        "last_synced_at": created_at,
-        "sync_status": "synced",
-        "last_error": None,
-    }
-
-    with DB.connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO topic_links (
-                    id, name, source_topic, target_topic, select_clause,
-                    payload_template, qos, emqx_rule_id, enabled, created_at,
-                    updated_at, last_synced_at, sync_status, last_error
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    row["id"],
-                    row["name"],
-                    row["source_topic"],
-                    row["target_topic"],
-                    row["select_clause"],
-                    row["payload_template"],
-                    row["qos"],
-                    row["emqx_rule_id"],
-                    row["enabled"],
-                    row["created_at"],
-                    row["updated_at"],
-                    row["last_synced_at"],
-                    row["sync_status"],
-                    row["last_error"],
-                ),
-            )
-            DB.set_sync_state(conn, TOPIC_LINKS_DOMAIN, status="synced", synced_at=created_at, error=None)
-        conn.commit()
-
-    await _broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_created", "link_id": link_id})
-    return {**row, "created_at": created_at.isoformat()}
-
-
-def _load_topic_link(conn, link_id: str) -> dict:
-    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("SELECT * FROM topic_links WHERE id = %s", (link_id,))
-        row = cur.fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Topic link not found")
-    return dict(row)
+    await broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_created", "link_id": row["id"]})
+    return row
 
 
 @router.put("/topic-links/{link_id}/activate")
 async def activate_topic_link(link_id: str, request: Request):
-    with DB.connect() as conn:
-        row = _load_topic_link(conn, link_id)
-
-    if not row["emqx_rule_id"]:
-        raise HTTPException(status_code=409, detail="Topic link has no EMQX rule ID")
-
     try:
-        request.app.state.tlm.activate_link(row["emqx_rule_id"])
+        row = topic_link_service.activate_topic_link(request.app, link_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    with DB.connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE topic_links
-                SET enabled = true,
-                    updated_at = %s,
-                    last_synced_at = %s,
-                    sync_status = 'synced',
-                    last_error = NULL
-                WHERE id = %s
-                """,
-                (_now(), _now(), link_id),
-            )
-            DB.set_sync_state(conn, TOPIC_LINKS_DOMAIN, status="synced", synced_at=_now(), error=None)
-        conn.commit()
-
-    await _broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_updated", "link_id": link_id})
-    return {"id": link_id, "enabled": True}
+    await broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_updated", "link_id": link_id})
+    return {"id": link_id, "enabled": row["enabled"]}
 
 
 @router.put("/topic-links/{link_id}/deactivate")
 async def deactivate_topic_link(link_id: str, request: Request):
-    with DB.connect() as conn:
-        row = _load_topic_link(conn, link_id)
-
-    if not row["emqx_rule_id"]:
-        raise HTTPException(status_code=409, detail="Topic link has no EMQX rule ID")
-
     try:
-        request.app.state.tlm.deactivate_link(row["emqx_rule_id"])
+        row = topic_link_service.deactivate_topic_link(request.app, link_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    with DB.connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE topic_links
-                SET enabled = false,
-                    updated_at = %s,
-                    last_synced_at = %s,
-                    sync_status = 'synced',
-                    last_error = NULL
-                WHERE id = %s
-                """,
-                (_now(), _now(), link_id),
-            )
-            DB.set_sync_state(conn, TOPIC_LINKS_DOMAIN, status="synced", synced_at=_now(), error=None)
-        conn.commit()
-
-    await _broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_updated", "link_id": link_id})
-    return {"id": link_id, "enabled": False}
+    await broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_updated", "link_id": link_id})
+    return {"id": link_id, "enabled": row["enabled"]}
 
 
 @router.delete("/topic-links/{link_id}")
 async def delete_topic_link(link_id: str, request: Request):
-    with DB.connect() as conn:
-        row = _load_topic_link(conn, link_id)
+    try:
+        topic_link_service.delete_topic_link(request.app, link_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    rule_id = row["emqx_rule_id"]
-    if rule_id:
-        try:
-            request.app.state.tlm.delete_link(rule_id)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    with DB.connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM topic_links WHERE id = %s", (link_id,))
-            DB.set_sync_state(conn, TOPIC_LINKS_DOMAIN, status="synced", synced_at=_now(), error=None)
-        conn.commit()
-
-    await _broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_deleted", "link_id": link_id})
+    await broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_deleted", "link_id": link_id})
     return {"deleted": True, "id": link_id}
 
 

@@ -77,9 +77,10 @@ def sync_topic_links(app, strict: bool = False) -> dict:
                         INSERT INTO topic_links (
                             id, name, source_topic, target_topic, select_clause,
                             payload_template, qos, emqx_rule_id, enabled,
-                            created_at, updated_at, last_synced_at, sync_status, last_error
+                            created_at, updated_at, last_synced_at, sync_status, last_error,
+                            owner_type, owner_id
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'synced', NULL)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'synced', NULL, 'manual', NULL)
                         """,
                         (
                             str(uuid.uuid4()),

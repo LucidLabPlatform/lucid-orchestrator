@@ -1,0 +1,151 @@
+id: foraging-experiment
+name: Foraging Experiment
+version: "1.0.0"
+description: >
+  Full foraging experiment workflow. Starts ROS nodes, recording, and a
+  perception-to-LED topic link, runs the foraging behaviour for a configurable
+  duration, then cleanly stops everything and collects results.
+tags:
+  - foraging
+  - robotics
+
+parameters:
+  robot_id:
+    type: string
+    description: Agent ID of the robot running ROS and the foraging behaviour
+    required: true
+  led_agent_id:
+    type: string
+    description: Agent ID hosting the LED strip component
+    required: true
+  camera_agent_id:
+    type: string
+    description: Agent ID hosting the camera recording component
+    required: true
+  duration_s:
+    type: float
+    default: 300.0
+    description: Duration of the active foraging phase in seconds
+  ros_launch_timeout_s:
+    type: float
+    default: 30.0
+    description: Maximum seconds to wait for ROS nodes to start
+
+steps:
+  - name: preflight_ping
+    type: parallel
+    on_failure: abort
+    steps:
+      - name: ping_robot
+        type: command
+        agent_id: "${robot_id}"
+        action: ping
+        timeout_s: 10.0
+        on_failure: abort
+      - name: ping_led
+        type: command
+        agent_id: "${led_agent_id}"
+        action: ping
+        timeout_s: 10.0
+        on_failure: abort
+      - name: ping_camera
+        type: command
+        agent_id: "${camera_agent_id}"
+        action: ping
+        timeout_s: 10.0
+        on_failure: abort
+
+  - name: start_ros
+    type: command
+    agent_id: "${robot_id}"
+    action: ros_launch
+    timeout_s: "${ros_launch_timeout_s}"
+    retries: 2
+    on_failure: abort
+    params:
+      launch_file: foraging.launch.py
+
+  - name: start_camera
+    type: command
+    agent_id: "${camera_agent_id}"
+    action: start_recording
+    timeout_s: 10.0
+    on_failure: abort
+    params:
+      format: mp4
+
+  - name: start_rosbag
+    type: command
+    agent_id: "${robot_id}"
+    action: start_rosbag
+    timeout_s: 10.0
+    on_failure: abort
+    params:
+      topics:
+        - /odom
+        - /cmd_vel
+        - /scan
+        - /foraging/state
+
+  - name: activate_perception_link
+    type: topic_link
+    operation: create
+    source_topic: "lucid/agents/${robot_id}/components/perception/evt/color_detected"
+    target_topic: "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color"
+    payload_template: '{"request_id":"${id}","color":{"r":${payload.r},"g":${payload.g},"b":${payload.b}}}'
+    qos: 0
+    on_failure: abort
+
+  - name: start_foraging
+    type: command
+    agent_id: "${robot_id}"
+    action: start_foraging
+    timeout_s: 15.0
+    on_failure: abort
+    params: {}
+
+  - name: wait_foraging_duration
+    type: delay
+    duration_s: "${duration_s}"
+
+  - name: stop_foraging
+    type: command
+    agent_id: "${robot_id}"
+    action: stop_foraging
+    timeout_s: 10.0
+    on_failure: continue
+    params: {}
+
+  - name: deactivate_perception_link
+    type: topic_link
+    operation: deactivate
+    source_topic: "lucid/agents/${robot_id}/components/perception/evt/color_detected"
+    target_topic: "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color"
+    on_failure: continue
+
+  - name: stop_recordings
+    type: parallel
+    on_failure: continue
+    steps:
+      - name: stop_rosbag
+        type: command
+        agent_id: "${robot_id}"
+        action: stop_rosbag
+        timeout_s: 10.0
+        on_failure: continue
+        params: {}
+      - name: stop_camera
+        type: command
+        agent_id: "${camera_agent_id}"
+        action: stop_recording
+        timeout_s: 10.0
+        on_failure: continue
+        params: {}
+
+  - name: collect_results
+    type: command
+    agent_id: "${robot_id}"
+    action: get_recording_paths
+    timeout_s: 10.0
+    on_failure: continue
+    params: {}
