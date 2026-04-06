@@ -32,6 +32,23 @@ def _raise_auth_error(exc: AuthServiceError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
 
+def _was_uninstalled(conn, agent_id: str, component_id: str) -> bool:
+    """Check if the most recent command for a component was a successful uninstall."""
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT action, result_ok
+            FROM commands
+            WHERE agent_id = %s AND component_id = %s
+            ORDER BY sent_ts DESC
+            LIMIT 1
+            """,
+            (agent_id, component_id),
+        )
+        row = cur.fetchone()
+    return row is not None and row["action"] == "uninstall" and row["result_ok"] is True
+
+
 def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         where = "WHERE a.agent_id = %s" if agent_id else ""
@@ -162,18 +179,25 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
             )}) if has_comp_cfg else None,
         }
 
-    # Filter components to only those the agent reports as installed.
-    # When state_components is None (no state received yet), keep all.
+    # Filter out uninstalled components using two sources of truth:
+    # 1. agent state.components list (if available)
+    # 2. commands table: exclude if last command was a successful uninstall
     for row in agent_rows:
+        aid = row["agent_id"]
+        if aid not in components_by_agent:
+            continue
         installed = row.get("state_components")
         if installed is not None:
-            aid = row["agent_id"]
-            if aid in components_by_agent:
-                installed_set = set(installed)
-                components_by_agent[aid] = {
-                    cid: comp for cid, comp in components_by_agent[aid].items()
-                    if cid in installed_set
-                }
+            installed_set = set(installed)
+            components_by_agent[aid] = {
+                cid: comp for cid, comp in components_by_agent[aid].items()
+                if cid in installed_set
+            }
+        else:
+            components_by_agent[aid] = {
+                cid: comp for cid, comp in components_by_agent[aid].items()
+                if not _was_uninstalled(conn, aid, cid)
+            }
 
     agents: list[dict] = []
     for row in agent_rows:
