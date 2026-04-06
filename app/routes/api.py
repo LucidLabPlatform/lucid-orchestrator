@@ -444,6 +444,24 @@ def agent_commands(agent_id: str, limit: int = 50):
     return [dict(row) for row in rows]
 
 
+@router.get("/agents/{agent_id}/command-catalog")
+def agent_command_catalog(agent_id: str):
+    from app.command_catalog import get_agent_commands, get_component_commands
+
+    with DB.connect() as conn:
+        agents = _query_agents(conn, agent_id)
+    if not agents:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent = agents[0]
+    components_catalog: dict[str, list[dict]] = {}
+    for cid, comp in (agent.get("components") or {}).items():
+        caps = (comp.get("metadata") or {}).get("capabilities")
+        components_catalog[cid] = get_component_commands(caps)
+
+    return {"agent": get_agent_commands(), "components": components_catalog}
+
+
 @router.post("/agents/{agent_id}/cmd/{action}")
 async def send_agent_command(agent_id: str, action: str, request: Request):
     try:
