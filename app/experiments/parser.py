@@ -59,28 +59,36 @@ def substitute_params(template: TemplateDef, params: dict[str, Any]) -> Template
     return load_template_from_dict(substituted)
 
 
-def _resolve_values(template: TemplateDef, params: dict[str, Any]) -> dict[str, str]:
-    resolved: dict[str, str] = {}
+def _resolve_values(template: TemplateDef, params: dict[str, Any]) -> dict[str, Any]:
+    resolved: dict[str, Any] = {}
     for name, schema in template.parameters.items():
         if name in params:
-            resolved[name] = str(params[name])
+            resolved[name] = params[name]
         elif schema.default is not None:
-            resolved[name] = str(schema.default)
+            resolved[name] = schema.default
         elif schema.required:
             raise ValueError(f"Required parameter '{name}' was not provided")
     for name, val in params.items():
         if name not in resolved:
-            resolved[name] = str(val)
+            resolved[name] = val
     return resolved
 
 
-def _replace_in(obj: Any, values: dict[str, str]) -> Any:
+def _replace_in(obj: Any, values: dict[str, Any]) -> Any:
     if isinstance(obj, str):
+        # If the entire string is a single ${param} reference, return the raw value
+        # (preserving type: int, float, bool, etc.) instead of stringifying it.
+        single = _PARAM_RE.fullmatch(obj)
+        if single:
+            key = single.group(1)
+            if not key.startswith("steps.") and key in values:
+                return values[key]
+
         def _sub(match: re.Match) -> str:
             key = match.group(1)
             if key.startswith("steps."):
                 return match.group(0)
-            return values.get(key, match.group(0))
+            return str(values.get(key, match.group(0)))
 
         return _PARAM_RE.sub(_sub, obj)
     if isinstance(obj, dict):

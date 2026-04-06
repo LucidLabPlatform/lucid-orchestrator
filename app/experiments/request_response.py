@@ -53,7 +53,8 @@ class RequestResponseManager:
         Returns the response payload dict on success.
         Raises asyncio.TimeoutError if no response arrives within timeout_s.
         """
-        request_id = str(payload.get("request_id") or uuid.uuid4())
+        raw_id = payload.get("request_id")
+        request_id = str(uuid.uuid4()) if not raw_id or raw_id == "auto" else str(raw_id)
         loop = asyncio.get_running_loop()
         future: asyncio.Future[Any] = loop.create_future()
 

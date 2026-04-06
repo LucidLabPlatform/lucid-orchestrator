@@ -35,8 +35,10 @@ import json
 import logging
 import os
 import queue
+import uuid
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 import paho.mqtt.client as mqtt
 
@@ -125,6 +127,7 @@ class MqttBridge:
         """
         self._q = event_queue
         self._rrm = rrm
+        self._telemetry_watchers: dict[str, dict[str, Callable]] = defaultdict(dict)
         self._client = mqtt.Client(
             client_id=client_id,
             protocol=mqtt.MQTTv5,
@@ -154,6 +157,27 @@ class MqttBridge:
             retain:  Whether the broker should retain the message.
         """
         self._client.publish(topic, json.dumps(payload), qos=qos, retain=retain)
+
+    def add_telemetry_watcher(self, topic: str, callback: Callable[[Any], None]) -> str:
+        """Register a callback invoked on each message matching *topic*.
+
+        Returns a watcher ID for later removal.  The callback receives the
+        parsed JSON payload and is called from the paho network thread.
+        """
+        watcher_id = uuid.uuid4().hex
+        self._telemetry_watchers[topic][watcher_id] = callback
+        log.debug("Telemetry watcher %s added for %s", watcher_id, topic)
+        return watcher_id
+
+    def remove_telemetry_watcher(self, watcher_id: str) -> None:
+        """Remove a previously registered telemetry watcher."""
+        for topic, watchers in list(self._telemetry_watchers.items()):
+            if watcher_id in watchers:
+                del watchers[watcher_id]
+                if not watchers:
+                    del self._telemetry_watchers[topic]
+                log.debug("Telemetry watcher %s removed", watcher_id)
+                return
 
     def _on_connect(self, client, userdata, flags, reason_code, properties=None):
         """Paho callback invoked after the TCP connection and CONNECT handshake.
@@ -210,6 +234,15 @@ class MqttBridge:
             request_id = (payload or {}).get("request_id") if isinstance(payload, dict) else None
             if request_id:
                 self._rrm.resolve_threadsafe(request_id, payload)
+
+        # Notify any registered telemetry watchers for this exact topic.
+        watchers = self._telemetry_watchers.get(msg.topic)
+        if watchers:
+            for callback in list(watchers.values()):
+                try:
+                    callback(payload)
+                except Exception:  # noqa: BLE001
+                    log.exception("Telemetry watcher callback error for %s", msg.topic)
 
         event = MqttEvent(
             topic=msg.topic,

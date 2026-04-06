@@ -22,6 +22,7 @@ class StepDef(BaseModel):
     timeout_s: float | str = 30.0
     retries: int = 0
     on_failure: str = "abort"
+    on_timeout: str = "abort"
     duration_s: float | str | None = None
     steps: list["StepDef"] | None = None
     source_topic: str | None = None
@@ -30,6 +31,11 @@ class StepDef(BaseModel):
     select_clause: str = "*"
     qos: int = 0
     operation: str = "create"
+    # approval step fields
+    message: str | None = None
+    # wait_for_condition step fields
+    telemetry_metric: str | None = None
+    condition: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def _validate_type_fields(self) -> "StepDef":
@@ -48,6 +54,14 @@ class StepDef(BaseModel):
             raise ValueError(
                 f"Step '{self.name}' of type 'topic_link' must specify a valid 'operation'"
             )
+        if self.type == "approval" and not self.message:
+            raise ValueError(f"Step '{self.name}' of type 'approval' must specify 'message'")
+        if self.type == "wait_for_condition":
+            if not self.agent_id or not self.telemetry_metric or not self.condition:
+                raise ValueError(
+                    f"Step '{self.name}' of type 'wait_for_condition' must specify "
+                    "'agent_id', 'telemetry_metric', and 'condition'"
+                )
         return self
 
 

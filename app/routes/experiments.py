@@ -249,6 +249,31 @@ def get_run_steps(run_id: str):
     return [dict(row) for row in rows]
 
 
+@router.post("/runs/{run_id}/approve")
+async def approve_run(run_id: str, request: Request):
+    engine = request.app.state.experiment_engine
+
+    with DB.connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT status FROM experiment_runs WHERE id = %s", (run_id,))
+            row = cur.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    if row["status"] in _TERMINAL_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Run '{run_id}' is already in terminal status '{row['status']}'",
+        )
+
+    try:
+        engine.approve(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return {"approved": True, "run_id": run_id}
+
+
 @router.delete("/runs/{run_id}")
 def cancel_run(run_id: str, request: Request):
     engine = request.app.state.experiment_engine

@@ -27,10 +27,48 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _extract_field(data: Any, field_path: str) -> Any:
+    """Extract a nested value from *data* using a dot-separated path.
+
+    Example: ``_extract_field({"value": {"state": "ok"}}, "value.state")``
+    returns ``"ok"``.
+    """
+    for key in field_path.split("."):
+        if isinstance(data, dict):
+            data = data.get(key)
+        else:
+            return None
+    return data
+
+
+def _check_condition(payload: Any, condition: dict[str, Any]) -> bool:
+    """Return *True* when *payload* satisfies *condition*.
+
+    Supported operators (keys in *condition*):
+      - ``field`` (required): dot-path into *payload*
+      - ``equals``: exact match
+      - ``in``: value must be in the given list
+      - ``not_equals``: value must differ
+    """
+    field_path = condition.get("field")
+    if not field_path:
+        return False
+    value = _extract_field(payload, field_path)
+
+    if "equals" in condition:
+        return value == condition["equals"]
+    if "in" in condition:
+        return value in condition["in"]
+    if "not_equals" in condition:
+        return value != condition["not_equals"]
+    return False
+
+
 class ExperimentEngine:
     def __init__(self, app) -> None:
         self._app = app
         self._cancel_flags: dict[str, bool] = {}
+        self._pending_approvals: dict[str, asyncio.Future] = {}
 
     async def run(self, run_id: str, template: TemplateDef, params: dict[str, Any]) -> None:
         self._cancel_flags[run_id] = False
@@ -76,7 +114,19 @@ class ExperimentEngine:
 
     def cancel(self, run_id: str) -> None:
         self._cancel_flags[run_id] = True
+        # Also resolve any pending approval so the engine unblocks
+        future = self._pending_approvals.pop(run_id, None)
+        if future and not future.done():
+            future.cancel()
         log.info("Cancel requested for run %s", run_id)
+
+    def approve(self, run_id: str) -> None:
+        """Resolve a pending approval step so the experiment continues."""
+        future = self._pending_approvals.pop(run_id, None)
+        if future is None or future.done():
+            raise ValueError(f"No pending approval for run '{run_id}'")
+        future.set_result({"approved": True, "approved_at": _now().isoformat()})
+        log.info("Approval granted for run %s", run_id)
 
     async def _cancel_run(self, run_id: str, step_index: int) -> None:
         await self._cleanup_topic_links(run_id)
@@ -122,7 +172,7 @@ class ExperimentEngine:
             )
 
             try:
-                result = await self._execute_step(step, step_results, run_id=run_id)
+                result = await self._execute_step(step, step_results, run_id=run_id, step_index=step_index)
                 ended_at = _now()
                 duration_ms = int((ended_at - started_at).total_seconds() * 1000)
                 await self._db(
@@ -182,15 +232,23 @@ class ExperimentEngine:
 
         return False, last_error
 
-    async def _execute_step(self, step: StepDef, step_results: dict[str, Any], run_id: str = "") -> Any:
+    async def _execute_step(
+        self, step: StepDef, step_results: dict[str, Any], run_id: str = "", step_index: int = 0,
+    ) -> Any:
         if step.type == "command":
             return await self._execute_command(step, step_results)
         if step.type == "delay":
             return await self._execute_delay(step)
         if step.type == "parallel":
-            return await self._execute_parallel(step, step_results, run_id=run_id)
+            return await self._execute_parallel(
+                step, step_results, run_id=run_id, parent_step_index=step_index,
+            )
         if step.type == "topic_link":
             return await self._execute_topic_link(step, run_id=run_id)
+        if step.type == "approval":
+            return await self._execute_approval(step, run_id=run_id)
+        if step.type == "wait_for_condition":
+            return await self._execute_wait_for_condition(step, run_id=run_id)
         raise ValueError(f"Unknown step type '{step.type}'")
 
     async def _execute_command(self, step: StepDef, step_results: dict[str, Any]) -> dict:
@@ -224,12 +282,16 @@ class ExperimentEngine:
         step: StepDef,
         step_results: dict[str, Any],
         run_id: str = "",
+        parent_step_index: int = 0,
     ) -> dict:
-        async def _run_sub(sub: StepDef) -> tuple[str, Any]:
-            return sub.name, await self._execute_step(sub, step_results, run_id=run_id)
+        async def _run_sub(sub_index: int, sub: StepDef) -> tuple[str, bool, Any]:
+            # Each sub-step gets its own DB record and retry logic
+            step_idx = parent_step_index * 1000 + sub_index
+            success, result = await self._run_step_with_retries(run_id, step_idx, sub, step_results)
+            return sub.name, success, result
 
         results_list = await asyncio.gather(
-            *[_run_sub(sub) for sub in (step.steps or [])],
+            *[_run_sub(i, sub) for i, sub in enumerate(step.steps or [])],
             return_exceptions=True,
         )
         combined: dict[str, Any] = {}
@@ -238,12 +300,92 @@ class ExperimentEngine:
             if isinstance(item, BaseException):
                 errors.append(str(item))
             else:
-                name, val = item
-                combined[name] = val
+                name, success, result = item
+                if success:
+                    combined[name] = result
+                else:
+                    errors.append(f"{name}: {result}")
 
         if errors:
             raise RuntimeError(f"Parallel sub-steps failed: {'; '.join(errors)}")
         return combined
+
+    async def _execute_approval(self, step: StepDef, run_id: str = "") -> dict:
+        """Pause execution until a human (dashboard / AI / API) approves."""
+        timeout = float(step.timeout_s) if isinstance(step.timeout_s, str) else step.timeout_s
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
+        self._pending_approvals[run_id] = future
+
+        await self._broadcast({
+            "type": "approval_required",
+            "run_id": run_id,
+            "step_name": step.name,
+            "message": step.message or "",
+            "ts": _now().isoformat(),
+        })
+        log.info("Run %s waiting for approval: %s", run_id, step.message)
+
+        try:
+            result = await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError:
+            self._pending_approvals.pop(run_id, None)
+            raise RuntimeError(f"Approval timed out after {timeout}s") from None
+        except asyncio.CancelledError:
+            self._pending_approvals.pop(run_id, None)
+            raise RuntimeError("Approval cancelled") from None
+
+        await self._broadcast({
+            "type": "approval_granted",
+            "run_id": run_id,
+            "step_name": step.name,
+            "ts": _now().isoformat(),
+        })
+        return result
+
+    async def _execute_wait_for_condition(self, step: StepDef, run_id: str = "") -> dict:
+        """Watch a telemetry topic until a condition is met or timeout."""
+        if not step.agent_id or not step.telemetry_metric or not step.condition:
+            raise ValueError(f"Step '{step.name}' is missing required wait_for_condition fields")
+
+        # Build the full MQTT topic to watch
+        if step.component_id:
+            topic = (
+                f"lucid/agents/{step.agent_id}/components/{step.component_id}"
+                f"/telemetry/{step.telemetry_metric}"
+            )
+        else:
+            topic = f"lucid/agents/{step.agent_id}/telemetry/{step.telemetry_metric}"
+
+        timeout = float(step.timeout_s) if isinstance(step.timeout_s, str) else step.timeout_s
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
+
+        # Register a watcher on the mqtt bridge
+        bridge = self._app.state.bridge
+        loop = asyncio.get_running_loop()
+
+        def _on_telemetry(payload: Any) -> None:
+            if future.done():
+                return
+            if _check_condition(payload, step.condition):
+                loop.call_soon_threadsafe(future.set_result, payload)
+
+        watcher_id = bridge.add_telemetry_watcher(topic, _on_telemetry)
+        log.info("Run %s waiting for condition on %s: %s", run_id, topic, step.condition)
+
+        try:
+            result = await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError:
+            if step.on_timeout == "continue":
+                log.warning("Run %s condition timed out on %s (continuing)", run_id, topic)
+                result = {"timed_out": True, "timeout_s": timeout}
+            else:
+                raise RuntimeError(
+                    f"Condition on '{step.telemetry_metric}' timed out after {timeout}s"
+                ) from None
+        finally:
+            bridge.remove_telemetry_watcher(watcher_id)
+
+        return result
 
     async def _execute_topic_link(self, step: StepDef, run_id: str = "") -> dict:
         operation = step.operation or "create"
@@ -349,6 +491,16 @@ class ExperimentEngine:
                 "select_clause": step.select_clause,
                 "payload_template": step.payload_template,
                 "qos": step.qos,
+            }
+        if step.type == "approval":
+            return {"message": step.message}
+        if step.type == "wait_for_condition":
+            return {
+                "agent_id": step.agent_id,
+                "component_id": step.component_id,
+                "telemetry_metric": step.telemetry_metric,
+                "condition": step.condition,
+                "on_timeout": step.on_timeout,
             }
         return None
 

@@ -31,7 +31,8 @@ async def send_command(
     timeout_s: float = 30.0,
 ) -> dict:
     payload_body = body or {}
-    request_id = str(payload_body.get("request_id") or uuid.uuid4())
+    raw_id = payload_body.get("request_id")
+    request_id = str(uuid.uuid4()) if not raw_id or raw_id == "auto" else str(raw_id)
     payload = command_payload(action, payload_body, request_id)
     topic = command_topic(agent_id, action, component_id=component_id)
     ts = _now()
