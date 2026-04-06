@@ -462,7 +462,7 @@ def agent_command_catalog(agent_id: str):
     return {"agent": get_agent_commands(), "components": components_catalog}
 
 
-@router.post("/agents/{agent_id}/cmd/{action}")
+@router.post("/agents/{agent_id}/cmd/{action:path}")
 async def send_agent_command(agent_id: str, action: str, request: Request):
     try:
         body = await request.json()
@@ -473,7 +473,7 @@ async def send_agent_command(agent_id: str, action: str, request: Request):
     return await _dispatch_command(request, agent_id=agent_id, action=action, body=body)
 
 
-@router.post("/agents/{agent_id}/components/{component_id}/cmd/{action}")
+@router.post("/agents/{agent_id}/components/{component_id}/cmd/{action:path}")
 async def send_component_command(agent_id: str, component_id: str, action: str, request: Request):
     try:
         body = await request.json()
