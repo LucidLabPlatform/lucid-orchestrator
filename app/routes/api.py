@@ -162,6 +162,19 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
             )}) if has_comp_cfg else None,
         }
 
+    # Filter components to only those the agent reports as installed.
+    # When state_components is None (no state received yet), keep all.
+    for row in agent_rows:
+        installed = row.get("state_components")
+        if installed is not None:
+            aid = row["agent_id"]
+            if aid in components_by_agent:
+                installed_set = set(installed)
+                components_by_agent[aid] = {
+                    cid: comp for cid, comp in components_by_agent[aid].items()
+                    if cid in installed_set
+                }
+
     agents: list[dict] = []
     for row in agent_rows:
         cfg: dict = {}
