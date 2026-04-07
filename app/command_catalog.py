@@ -54,9 +54,9 @@ COMPONENT_TEMPLATES: dict[str, dict | None] = {
     "reset": None,
     "clear": None,
     # config (always available via component base class)
-    "cfg/set": {"set": {}},
+    "cfg/set": {"set": {"key": "value"}},
     "cfg/logging/set": {"set": {"log_level": "INFO"}},
-    "cfg/telemetry/set": {"set": {}},
+    "cfg/telemetry/set": {"set": {"metric_name": {"enabled": True, "interval_s": 60, "change_threshold_percent": 5}}},
     # LED strip
     "set-color": {"color": {"r": 255, "g": 0, "b": 0}},
     "set-range-percent": {"color": {"r": 255, "g": 0, "b": 0}, "start_percent": 0, "end_percent": 100},
