@@ -55,5 +55,11 @@ class AuthService:
     def delete_cc(self) -> None:
         self._request("DELETE", "/cc")
 
+    def create_observer(self, username: str) -> dict:
+        return self._request("POST", f"/observers/{username}").json()
+
+    def delete_observer(self, username: str) -> None:
+        self._request("DELETE", f"/observers/{username}")
+
     def get_mqtt_state(self) -> dict:
         return self._request("GET", "/mqtt-state").json()

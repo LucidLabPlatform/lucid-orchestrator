@@ -507,7 +507,7 @@ async def internal_command(body: InternalCommandRequest, request: Request):
 def list_users(request: Request):
     sync_mqtt_users(request.app, strict=False)
     with DB.connect() as conn:
-        rows = DB.list_mqtt_users(conn, roles=("agent", "central-command"))
+        rows = DB.list_mqtt_users(conn, roles=("agent", "central-command", "observer"))
     return [row for row in rows if row.get("has_password_user", True)]
 
 
@@ -547,6 +547,27 @@ def create_cc_user(request: Request):
     return {"username": username, "role": "central-command", "password": result["password"]}
 
 
+@router.post("/users/observer")
+def create_observer_user(body: AddAgentRequest, request: Request):
+    sync_mqtt_users(request.app, strict=False)
+    with DB.connect() as conn:
+        existing = DB.get_mqtt_user(conn, body.agent_id)
+        if existing is not None and existing.get("has_password_user", True):
+            raise HTTPException(status_code=409, detail=f"User '{body.agent_id}' already exists")
+
+    try:
+        result = request.app.state.auth.create_observer(body.agent_id)
+    except AuthServiceError as exc:
+        _raise_auth_error(exc)
+
+    try:
+        sync_mqtt_users(request.app, strict=True)
+    except AuthServiceError as exc:
+        _raise_auth_error(exc)
+
+    return {"username": body.agent_id, "role": "observer", "password": result["password"]}
+
+
 @router.delete("/users/{username}")
 def delete_user(username: str, request: Request):
     sync_mqtt_users(request.app, strict=False)
@@ -563,6 +584,8 @@ def delete_user(username: str, request: Request):
             request.app.state.auth.delete_cc()
         elif role == "agent":
             request.app.state.auth.delete_agent(username)
+        elif role == "observer":
+            request.app.state.auth.delete_observer(username)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported role '{role}'")
     except AuthServiceError as exc:
@@ -592,6 +615,8 @@ def rotate_password(username: str, request: Request):
             username = result["username"]
         elif role == "agent":
             result = request.app.state.auth.create_agent(username)
+        elif role == "observer":
+            result = request.app.state.auth.create_observer(username)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported role '{role}'")
     except AuthServiceError as exc:
