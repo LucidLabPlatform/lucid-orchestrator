@@ -466,6 +466,65 @@ def agent_command_catalog(agent_id: str):
     return {"agent": get_agent_commands(), "components": components_catalog}
 
 
+@router.get("/topic-tree")
+def topic_tree():
+    """Return the full MQTT topic tree for all agents with their components."""
+    from app.command_catalog import AGENT_COMMANDS, COMPONENT_TEMPLATES, _BASE_COMMANDS
+
+    with DB.connect() as conn:
+        agents = _query_agents(conn)
+
+    agent_topics = {
+        "retained": ["metadata", "status", "state", "cfg", "cfg/logging", "cfg/telemetry"],
+        "streams": ["logs", "telemetry/{metric}"],
+        "commands": [cmd["action"] for cmd in AGENT_COMMANDS],
+        "events": [f"{cmd['action']}/result" for cmd in AGENT_COMMANDS],
+    }
+
+    result = []
+    for agent in agents:
+        aid = agent["agent_id"]
+        status = (agent.get("status") or {}).get("state")
+        prefix = f"lucid/agents/{aid}"
+
+        agent_entry = {
+            "agent_id": aid,
+            "status": status,
+            "prefix": prefix,
+            "topics": {
+                "retained": [f"{prefix}/{t}" for t in agent_topics["retained"]],
+                "streams": [f"{prefix}/{t}" for t in agent_topics["streams"]],
+                "commands": [f"{prefix}/cmd/{t}" for t in agent_topics["commands"]],
+                "events": [f"{prefix}/evt/{t}" for t in agent_topics["events"]],
+            },
+            "components": [],
+        }
+
+        for cid, comp in (agent.get("components") or {}).items():
+            caps = (comp.get("metadata") or {}).get("capabilities") or []
+            comp_status = (comp.get("status") or {}).get("state")
+            comp_prefix = f"{prefix}/components/{cid}"
+
+            all_actions = list(caps) + [a for a in _BASE_COMMANDS if a not in caps]
+
+            agent_entry["components"].append({
+                "component_id": cid,
+                "status": comp_status,
+                "prefix": comp_prefix,
+                "capabilities": caps,
+                "topics": {
+                    "retained": [f"{comp_prefix}/{t}" for t in ["metadata", "status", "state", "cfg", "cfg/logging", "cfg/telemetry"]],
+                    "streams": [f"{comp_prefix}/{t}" for t in ["logs", "telemetry/{{metric}}"]],
+                    "commands": [f"{comp_prefix}/cmd/{a}" for a in all_actions],
+                    "events": [f"{comp_prefix}/evt/{a}/result" for a in all_actions],
+                },
+            })
+
+        result.append(agent_entry)
+
+    return result
+
+
 @router.post("/agents/{agent_id}/cmd/{action:path}")
 async def send_agent_command(agent_id: str, action: str, request: Request):
     try:
