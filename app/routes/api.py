@@ -455,7 +455,7 @@ def agent_command_catalog(agent_id: str):
     with DB.connect() as conn:
         agents = _query_agents(conn, agent_id)
     if not agents:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found. Call list_agents first to get valid agent IDs.")
 
     agent = agents[0]
     components_catalog: dict[str, list[dict]] = {}
