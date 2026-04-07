@@ -20,6 +20,7 @@ from app.routes.experiments import router as experiments_router
 from app.sync import sync_forever, sync_mqtt_users, sync_topic_links
 from app.topic_links.manager import TopicLinkManager
 from app.topic_links import service as topic_link_service
+from app.ws_manager import WebSocketManager
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -102,17 +103,17 @@ async def lifespan(app: FastAPI):
     sync_interval_s = float(os.environ.get("ORCHESTRATOR_SYNC_INTERVAL_S", "5"))
 
     event_queue: queue.Queue = queue.Queue(maxsize=10_000)
-    ws_clients: set = set()
+    ws_mgr = WebSocketManager()
     rrm = RequestResponseManager()
 
     bridge = MqttBridge(event_queue, rrm)
     bridge.start()
 
-    broadcaster = Broadcaster(event_queue, ws_clients)
+    broadcaster = Broadcaster(event_queue, ws_mgr)
     bc_task = asyncio.create_task(broadcaster.run())
 
     app.state.bridge = bridge
-    app.state.ws_clients = ws_clients
+    app.state.ws_mgr = ws_mgr
     app.state.rrm = rrm
     app.state.tlm = tlm
     app.state.auth = auth

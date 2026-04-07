@@ -13,19 +13,18 @@ parks, and the loop stays free for HTTP/WebSocket handlers.
 
 WebSocket client lifecycle
 --------------------------
-Connected clients are tracked in a plain ``set`` that is shared with the
-``/api/ws`` WebSocket endpoint (see ``app/routes/api.py``).  When a send
-fails (e.g. client navigated away), the dead socket is silently removed from
-the set.  No reconnection logic is implemented here; the browser JS handles
-reconnecting.
+Connected clients are tracked in a ``WebSocketManager`` that is shared with the
+``/api/ws`` WebSocket endpoint (see ``app/routes/api.py``).  All access is
+lock-protected and sends happen in parallel, so one slow client cannot block
+delivery to the others.
 """
 import asyncio
-import json
 import logging
 import queue
 from datetime import datetime, timezone
 
 from app.mqtt_bridge import MqttEvent
+from app.ws_manager import WebSocketManager
 
 log = logging.getLogger(__name__)
 
@@ -38,19 +37,14 @@ class Broadcaster:
     """Drains the MQTT event queue and pushes events to all connected WebSocket clients.
 
     Attributes:
-        _q:          Thread-safe queue populated by ``MqttBridge._on_message``.
-        _ws_clients: Shared set of live ``WebSocket`` objects.
-        _running:    Loop control flag; set to ``False`` by ``stop()``.
+        _q:      Thread-safe queue populated by ``MqttBridge._on_message``.
+        _ws:     ``WebSocketManager`` that handles client tracking and broadcasting.
+        _running: Loop control flag; set to ``False`` by ``stop()``.
     """
 
-    def __init__(self, event_queue: queue.Queue, ws_clients: set) -> None:
-        """
-        Args:
-            event_queue: Queue of ``MqttEvent`` objects produced by the MQTT bridge.
-            ws_clients:  Mutable set of active FastAPI ``WebSocket`` connections.
-        """
+    def __init__(self, event_queue: queue.Queue, ws: WebSocketManager) -> None:
         self._q = event_queue
-        self._ws_clients = ws_clients
+        self._ws = ws
         self._running = False
 
     async def run(self) -> None:
@@ -81,15 +75,6 @@ class Broadcaster:
         self._running = False
 
     async def _handle(self, event: MqttEvent) -> None:
-        """Convert an ``MqttEvent`` to a JSON WebSocket frame and broadcast it.
-
-        Args:
-            event: Parsed MQTT event from the bridge.
-
-        Side effects:
-            Calls ``_broadcast`` which sends to all connected WebSocket clients
-            and removes any that have disconnected.
-        """
         ts = _now()
         ws_event = {
             "type":         "mqtt",
@@ -101,26 +86,4 @@ class Broadcaster:
             "payload":      event.payload,
             "ts":           ts.isoformat(),
         }
-        await self._broadcast(ws_event)
-
-    async def _broadcast(self, event: dict) -> None:
-        """Send a JSON-serialised event to every connected WebSocket client.
-
-        Dead clients (those that raise on send) are collected and removed from
-        ``_ws_clients`` in one batch after the send loop completes, avoiding
-        mutation during iteration.
-
-        Args:
-            event: Dict that will be serialised to JSON and sent as a text frame.
-        """
-        if not self._ws_clients:
-            return
-        msg = json.dumps(event)
-        dead = set()
-        for ws in list(self._ws_clients):
-            try:
-                await asyncio.wait_for(ws.send_text(msg), timeout=2.0)
-            except Exception:
-                dead.add(ws)
-        # Remove dead clients after iteration to avoid mutating the set mid-loop
-        self._ws_clients -= dead
+        await self._ws.broadcast(ws_event)

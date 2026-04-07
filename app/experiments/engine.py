@@ -9,7 +9,7 @@ import psycopg2.extras
 
 from app import db as DB
 from app.command_dispatch import send_command
-from app.events import broadcast_ws
+from app.ws_manager import WebSocketManager
 from app.experiments.models import StepDef, TemplateDef
 from app.experiments.parser import resolve_params_in_step, substitute_params
 from app.topic_links import service as topic_link_service
@@ -597,4 +597,5 @@ class ExperimentEngine:
             conn.commit()
 
     async def _broadcast(self, event: dict) -> None:
-        await broadcast_ws(self._app.state.ws_clients, event)
+        ws_mgr: WebSocketManager = self._app.state.ws_mgr
+        await ws_mgr.broadcast(event)

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from app import db as DB
 from app.auth_service import AuthServiceError
 from app.command_dispatch import send_command
-from app.events import broadcast_ws
+from app.ws_manager import WebSocketManager
 from app.sync import sync_mqtt_users, sync_topic_links
 from app.topic_links import service as topic_link_service
 
@@ -828,7 +828,8 @@ async def create_topic_link(body: TopicLinkCreateRequest, request: Request):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    await broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_created", "link_id": row["id"]})
+    ws_mgr: WebSocketManager = request.app.state.ws_mgr
+    await ws_mgr.broadcast({"type": "topic_link_created", "link_id": row["id"]})
     return row
 
 
@@ -843,7 +844,8 @@ async def activate_topic_link(link_id: str, request: Request):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    await broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_updated", "link_id": link_id})
+    ws_mgr: WebSocketManager = request.app.state.ws_mgr
+    await ws_mgr.broadcast({"type": "topic_link_updated", "link_id": link_id})
     return {"id": link_id, "enabled": row["enabled"]}
 
 
@@ -858,7 +860,8 @@ async def deactivate_topic_link(link_id: str, request: Request):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    await broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_updated", "link_id": link_id})
+    ws_mgr: WebSocketManager = request.app.state.ws_mgr
+    await ws_mgr.broadcast({"type": "topic_link_updated", "link_id": link_id})
     return {"id": link_id, "enabled": row["enabled"]}
 
 
@@ -873,19 +876,20 @@ async def delete_topic_link(link_id: str, request: Request):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    await broadcast_ws(request.app.state.ws_clients, {"type": "topic_link_deleted", "link_id": link_id})
+    ws_mgr: WebSocketManager = request.app.state.ws_mgr
+    await ws_mgr.broadcast({"type": "topic_link_deleted", "link_id": link_id})
     return {"deleted": True, "id": link_id}
 
 
 @router.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
-    ws_clients = ws.app.state.ws_clients
-    ws_clients.add(ws)
+    ws_mgr: WebSocketManager = ws.app.state.ws_mgr
+    await ws_mgr.connect(ws)
     try:
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:
         pass
     finally:
-        ws_clients.discard(ws)
+        await ws_mgr.disconnect(ws)
