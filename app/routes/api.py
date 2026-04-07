@@ -188,7 +188,11 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
             continue
         installed = row.get("state_components")
         if installed is not None:
-            installed_set = set(installed)
+            # Components may be a list of strings or a list of dicts with component_id
+            installed_set = set(
+                c["component_id"] if isinstance(c, dict) else c
+                for c in installed
+            )
             components_by_agent[aid] = {
                 cid: comp for cid, comp in components_by_agent[aid].items()
                 if cid in installed_set
