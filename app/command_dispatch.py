@@ -10,7 +10,13 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _normalize_action(action: str) -> str:
+    """Normalize action names: underscores become hyphens to match MQTT convention."""
+    return action.replace("_", "-")
+
+
 def command_topic(agent_id: str, action: str, component_id: str | None = None) -> str:
+    action = _normalize_action(action)
     if component_id:
         return f"lucid/agents/{agent_id}/components/{component_id}/cmd/{action}"
     return f"lucid/agents/{agent_id}/cmd/{action}"
@@ -33,6 +39,7 @@ async def send_command(
     payload_body = body or {}
     raw_id = payload_body.get("request_id")
     request_id = str(uuid.uuid4()) if not raw_id or raw_id == "auto" else str(raw_id)
+    action = _normalize_action(action)
     payload = command_payload(action, payload_body, request_id)
     topic = command_topic(agent_id, action, component_id=component_id)
     ts = _now()
