@@ -63,7 +63,7 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
                 s.state AS status_state,
                 s.connected_since_ts,
                 s.uptime_s,
-                s.version AS status_version,
+                m.version AS status_version,  -- version from metadata, not status
                 s.received_ts AS status_received_ts,
                 st.cpu_percent,
                 st.memory_percent,
