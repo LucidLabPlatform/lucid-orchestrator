@@ -27,7 +27,11 @@ AGENT_COMMANDS: list[dict] = [
     {"action": "cfg/logging/set", "category": "config", "label": "Set Log Level", "has_body": True,
      "template": {"set": {"log_level": "INFO"}}},
     {"action": "cfg/telemetry/set", "category": "config", "label": "Set Telemetry", "has_body": True,
-     "template": {"set": {"cpu_percent": {"enabled": True, "interval_s": 60, "change_threshold_percent": 5}}}},
+     "template": {"set": {
+         "cpu_percent":    {"enabled": True, "interval_s": 60, "change_threshold_percent": 5},
+         "memory_percent": {"enabled": True, "interval_s": 60, "change_threshold_percent": 5},
+         "disk_percent":   {"enabled": True, "interval_s": 60, "change_threshold_percent": 5},
+     }}},
     # component management
     {"action": "components/install", "category": "components", "label": "Install Component", "has_body": True,
      "template": {"component_id": "", "source": {"type": "github_release", "owner": "", "repo": "", "version": "", "sha256": ""}}},
