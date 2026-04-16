@@ -63,11 +63,7 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
                 s.state AS status_state,
                 s.connected_since_ts,
                 s.uptime_s,
-                m.version AS status_version,  -- version from metadata, not status
                 s.received_ts AS status_received_ts,
-                st.cpu_percent,
-                st.memory_percent,
-                st.disk_percent,
                 st.components AS state_components,
                 st.received_ts AS state_received_ts,
                 m.version AS metadata_version,
@@ -151,7 +147,7 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
     for row in component_rows:
         component_cfg = row["cfg_payload"] or {}
         if row["cfg_log_level"] is not None:
-            component_cfg = {**component_cfg, "logging": {"level": row["cfg_log_level"]}}
+            component_cfg = {**component_cfg, "logging": {"log_level": row["cfg_log_level"]}}
         if row["cfg_telemetry_payload"] is not None:
             component_cfg = {**component_cfg, "telemetry": row["cfg_telemetry_payload"]}
 
@@ -209,22 +205,22 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
         if row["heartbeat_s"] is not None:
             cfg["heartbeat_s"] = row["heartbeat_s"]
         if row["cfg_log_level"] is not None:
-            cfg["logging"] = {"level": row["cfg_log_level"]}
+            cfg["logging"] = {"log_level": row["cfg_log_level"]}
         telemetry_cfg = {
             "cpu_percent": {
                 "enabled": row["cpu_pct_enabled"],
                 "interval_s": row["cpu_pct_interval_s"],
-                "threshold": row["cpu_pct_threshold"],
+                "change_threshold_percent": row["cpu_pct_threshold"],
             },
             "memory_percent": {
                 "enabled": row["memory_pct_enabled"],
                 "interval_s": row["memory_pct_interval_s"],
-                "threshold": row["memory_pct_threshold"],
+                "change_threshold_percent": row["memory_pct_threshold"],
             },
             "disk_percent": {
                 "enabled": row["disk_pct_enabled"],
                 "interval_s": row["disk_pct_interval_s"],
-                "threshold": row["disk_pct_threshold"],
+                "change_threshold_percent": row["disk_pct_threshold"],
             },
         }
         if any(value is not None for metric in telemetry_cfg.values() for value in metric.values()):
@@ -234,10 +230,7 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
             row[key] is not None
             for key in ("cfg_received_ts", "cfg_logging_received_ts", "cfg_telemetry_received_ts")
         )
-        has_status = any(
-            row[key] is not None
-            for key in ("status_state", "connected_since_ts", "uptime_s", "status_version")
-        )
+        has_status = row["status_received_ts"] is not None
         has_state = row["state_received_ts"] is not None
         has_metadata = row["metadata_received_ts"] is not None
 
@@ -250,14 +243,10 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
                     "state": row["status_state"],
                     "connected_since_ts": row["connected_since_ts"],
                     "uptime_s": row["uptime_s"],
-                    "version": row["status_version"],
                     "received_ts": row["status_received_ts"],
-                } if (has_status or row["status_received_ts"] is not None) else None,
+                } if has_status else None,
                 "state": (
                     {
-                        "cpu_percent": row["cpu_percent"],
-                        "memory_percent": row["memory_percent"],
-                        "disk_percent": row["disk_percent"],
                         "components": row["state_components"],
                         "received_ts": row["state_received_ts"],
                     }

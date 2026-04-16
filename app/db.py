@@ -67,8 +67,16 @@ def init_schema(url: str | None = None) -> None:
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS mqtt_acl_rules_username_idx ON mqtt_acl_rules(username)")
 
+            # authn_log and authz_log are TimescaleDB hypertables created by init.sql.
+            # CREATE TABLE IF NOT EXISTS would silently no-op on existing hypertables, so
+            # we only add missing indexes and the permanent denied tables here.
+            cur.execute("CREATE INDEX IF NOT EXISTS authn_log_ts_idx ON authn_log(ts DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS authn_log_username_idx ON authn_log(username)")
+            cur.execute("CREATE INDEX IF NOT EXISTS authz_log_ts_idx ON authz_log(ts DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS authz_log_username_idx ON authz_log(username)")
+
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS authn_log (
+                CREATE TABLE IF NOT EXISTS authn_denied (
                     id        BIGSERIAL PRIMARY KEY,
                     ts        TIMESTAMPTZ NOT NULL,
                     username  TEXT,
@@ -76,11 +84,11 @@ def init_schema(url: str | None = None) -> None:
                     result    TEXT NOT NULL
                 )
             """)
-            cur.execute("CREATE INDEX IF NOT EXISTS authn_log_ts_idx ON authn_log(ts DESC)")
-            cur.execute("CREATE INDEX IF NOT EXISTS authn_log_username_idx ON authn_log(username)")
+            cur.execute("CREATE INDEX IF NOT EXISTS authn_denied_ts_idx ON authn_denied(ts DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS authn_denied_username_idx ON authn_denied(username)")
 
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS authz_log (
+                CREATE TABLE IF NOT EXISTS authz_denied (
                     id        BIGSERIAL PRIMARY KEY,
                     ts        TIMESTAMPTZ NOT NULL,
                     username  TEXT,
@@ -90,8 +98,8 @@ def init_schema(url: str | None = None) -> None:
                     result    TEXT NOT NULL
                 )
             """)
-            cur.execute("CREATE INDEX IF NOT EXISTS authz_log_ts_idx ON authz_log(ts DESC)")
-            cur.execute("CREATE INDEX IF NOT EXISTS authz_log_username_idx ON authz_log(username)")
+            cur.execute("CREATE INDEX IF NOT EXISTS authz_denied_ts_idx ON authz_denied(ts DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS authz_denied_username_idx ON authz_denied(username)")
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS topic_links (
