@@ -18,6 +18,7 @@ from app.experiments.request_response import RequestResponseManager
 from app.mqtt_bridge import MqttBridge
 from app.routes.api import router as api_router
 from app.routes.experiments import router as experiments_router
+from app.heartbeat import heartbeat_checker
 from app.sync import sync_forever, sync_mqtt_users, sync_topic_links
 from app.topic_links.manager import TopicLinkManager
 from app.topic_links import service as topic_link_service
@@ -127,9 +128,16 @@ async def lifespan(app: FastAPI):
     sync_topic_links(app, strict=False)
     sync_task = asyncio.create_task(sync_forever(app, interval_s=sync_interval_s))
 
+    heartbeat_timeout = float(os.environ.get("HEARTBEAT_TIMEOUT_S", "90"))
+    heartbeat_interval = float(os.environ.get("HEARTBEAT_CHECK_INTERVAL_S", "15"))
+    hb_task = asyncio.create_task(
+        heartbeat_checker(ws_mgr, timeout_s=heartbeat_timeout, check_interval_s=heartbeat_interval)
+    )
+
     log.info("lucid-orchestrator started")
     yield
 
+    hb_task.cancel()
     sync_task.cancel()
     broadcaster.stop()
     bc_task.cancel()
