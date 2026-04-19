@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import psycopg2.extras
@@ -340,6 +341,19 @@ class InternalCommandRequest(BaseModel):
     timeout_s: float = 30.0
 
 
+class BatchCommandTarget(BaseModel):
+    agent_id: str
+    component_id: str | None = None
+
+
+class BatchCommandRequest(BaseModel):
+    action: str
+    targets: list[BatchCommandTarget]
+    payload: dict = Field(default_factory=dict)
+    wait: bool = False
+    timeout_s: float = 30.0
+
+
 class TopicLinkCreateRequest(BaseModel):
     name: str
     source_topic: str
@@ -553,6 +567,44 @@ async def internal_command(body: InternalCommandRequest, request: Request):
         wait=body.wait,
         timeout_s=body.timeout_s,
     )
+
+
+@router.post("/commands/batch")
+async def batch_commands(body: BatchCommandRequest, request: Request):
+    """Execute a command on multiple agents/components in parallel."""
+
+    async def _run_one(target: BatchCommandTarget) -> dict:
+        try:
+            result = await send_command(
+                request.app,
+                agent_id=target.agent_id,
+                component_id=target.component_id,
+                action=body.action,
+                body=body.payload,
+                wait=body.wait,
+                timeout_s=body.timeout_s,
+            )
+            return {
+                "agent_id": target.agent_id,
+                "component_id": target.component_id,
+                "ok": True,
+                **result,
+            }
+        except Exception as exc:
+            return {
+                "agent_id": target.agent_id,
+                "component_id": target.component_id,
+                "ok": False,
+                "error": str(exc),
+            }
+
+    results = await asyncio.gather(*[_run_one(t) for t in body.targets])
+    success = sum(1 for r in results if r["ok"])
+    failed = len(results) - success
+    return {
+        "results": results,
+        "summary": {"total": len(results), "success": success, "failed": failed},
+    }
 
 
 @router.get("/users")

@@ -36,6 +36,9 @@ class StepDef(BaseModel):
     # wait_for_condition step fields
     telemetry_metric: str | None = None
     condition: dict[str, Any] | None = None
+    # template step fields
+    template_id: str | None = None
+    template_params: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_type_fields(self) -> "StepDef":
@@ -62,6 +65,8 @@ class StepDef(BaseModel):
                     f"Step '{self.name}' of type 'wait_for_condition' must specify "
                     "'agent_id', 'telemetry_metric', and 'condition'"
                 )
+        if self.type == "template" and not self.template_id:
+            raise ValueError(f"Step '{self.name}' of type 'template' must specify 'template_id'")
         return self
 
 

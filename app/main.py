@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 import psycopg2.extras
 from fastapi import FastAPI
+from starlette.middleware.cors import CORSMiddleware
 
 from app.auth_service import AuthService
 from app import db as DB
@@ -137,6 +138,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="LUCID Orchestrator", lifespan=lifespan)
+
+_cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5000").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in _cors_origins],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(api_router, prefix="/api")
 app.include_router(experiments_router, prefix="/api/experiments")
 

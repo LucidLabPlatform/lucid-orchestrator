@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -11,7 +12,7 @@ from app import db as DB
 from app.command_dispatch import send_command
 from app.ws_manager import WebSocketManager
 from app.experiments.models import StepDef, TemplateDef
-from app.experiments.parser import resolve_params_in_step, substitute_params
+from app.experiments.parser import load_template_from_dict, resolve_params_in_step, substitute_params
 from app.topic_links import service as topic_link_service
 
 log = logging.getLogger(__name__)
@@ -30,12 +31,26 @@ def _now() -> datetime:
 def _extract_field(data: Any, field_path: str) -> Any:
     """Extract a nested value from *data* using a dot-separated path.
 
+    When a string value is encountered mid-path, it is automatically parsed
+    as JSON so that fields inside ``std_msgs/String`` telemetry payloads
+    (which arrive as ``{"value": {"data": "{\"state\": ...}"}}``) can be
+    traversed transparently.
+
     Example: ``_extract_field({"value": {"state": "ok"}}, "value.state")``
     returns ``"ok"``.
     """
     for key in field_path.split("."):
         if isinstance(data, dict):
             data = data.get(key)
+        elif isinstance(data, str):
+            try:
+                data = json.loads(data)
+                if isinstance(data, dict):
+                    data = data.get(key)
+                else:
+                    return None
+            except (json.JSONDecodeError, TypeError):
+                return None
         else:
             return None
     return data
@@ -49,6 +64,8 @@ def _check_condition(payload: Any, condition: dict[str, Any]) -> bool:
       - ``equals``: exact match
       - ``in``: value must be in the given list
       - ``not_equals``: value must differ
+      - ``less_than``: numeric comparison (value < threshold)
+      - ``greater_than``: numeric comparison (value > threshold)
     """
     field_path = condition.get("field")
     if not field_path:
@@ -61,6 +78,16 @@ def _check_condition(payload: Any, condition: dict[str, Any]) -> bool:
         return value in condition["in"]
     if "not_equals" in condition:
         return value != condition["not_equals"]
+    if "less_than" in condition:
+        try:
+            return float(value) < float(condition["less_than"])
+        except (TypeError, ValueError):
+            return False
+    if "greater_than" in condition:
+        try:
+            return float(value) > float(condition["greater_than"])
+        except (TypeError, ValueError):
+            return False
     return False
 
 
@@ -144,6 +171,7 @@ class ExperimentEngine:
         step_index: int,
         step: StepDef,
         step_results: dict[str, Any],
+        _template_depth: int = 0,
     ) -> tuple[bool, Any]:
         last_error: Any = None
         max_attempts = step.retries + 1
@@ -172,7 +200,10 @@ class ExperimentEngine:
             )
 
             try:
-                result = await self._execute_step(step, step_results, run_id=run_id, step_index=step_index)
+                result = await self._execute_step(
+                    step, step_results, run_id=run_id, step_index=step_index,
+                    _template_depth=_template_depth,
+                )
                 ended_at = _now()
                 duration_ms = int((ended_at - started_at).total_seconds() * 1000)
                 await self._db(
@@ -234,6 +265,7 @@ class ExperimentEngine:
 
     async def _execute_step(
         self, step: StepDef, step_results: dict[str, Any], run_id: str = "", step_index: int = 0,
+        _template_depth: int = 0,
     ) -> Any:
         if step.type == "command":
             return await self._execute_command(step, step_results)
@@ -249,6 +281,11 @@ class ExperimentEngine:
             return await self._execute_approval(step, run_id=run_id)
         if step.type == "wait_for_condition":
             return await self._execute_wait_for_condition(step, run_id=run_id)
+        if step.type == "template":
+            return await self._execute_template(
+                step, step_results, run_id=run_id, step_index=step_index,
+                _depth=_template_depth,
+            )
         raise ValueError(f"Unknown step type '{step.type}'")
 
     async def _execute_command(self, step: StepDef, step_results: dict[str, Any]) -> dict:
@@ -387,6 +424,79 @@ class ExperimentEngine:
 
         return result
 
+    _MAX_TEMPLATE_DEPTH = 5
+
+    async def _execute_template(
+        self,
+        step: StepDef,
+        step_results: dict[str, Any],
+        run_id: str = "",
+        step_index: int = 0,
+        _depth: int = 0,
+    ) -> dict:
+        """Execute a child template inline within the current run."""
+        if _depth >= self._MAX_TEMPLATE_DEPTH:
+            raise ValueError(
+                f"Template nesting too deep (max {self._MAX_TEMPLATE_DEPTH}): "
+                f"'{step.template_id}' at depth {_depth}"
+            )
+        if not step.template_id:
+            raise ValueError(f"Step '{step.name}' is missing template_id")
+
+        definition = await self._db(self._sync_load_template, step.template_id)
+        if definition is None:
+            raise ValueError(f"Template '{step.template_id}' not found")
+
+        template = load_template_from_dict(definition)
+
+        # Resolve runtime step-result references in template_params
+        resolved_params = resolve_params_in_step(step.template_params, step_results)
+
+        try:
+            resolved = substitute_params(template, resolved_params)
+        except ValueError as exc:
+            raise ValueError(
+                f"Template '{step.template_id}' parameter error: {exc}"
+            ) from exc
+
+        sub_results: dict[str, Any] = {}
+        for sub_idx, sub_step in enumerate(resolved.steps):
+            if self._cancel_flags.get(run_id):
+                raise RuntimeError("Cancelled")
+
+            child_step_index = step_index * 1000 + sub_idx
+            success, result = await self._run_step_with_retries(
+                run_id, child_step_index, sub_step, sub_results,
+                _template_depth=_depth + 1,
+            )
+
+            if self._cancel_flags.get(run_id):
+                raise RuntimeError("Cancelled")
+
+            if success:
+                sub_results[sub_step.name] = result
+            elif sub_step.on_failure == "abort":
+                raise RuntimeError(
+                    f"Sub-template step '{sub_step.name}' failed: {result}"
+                )
+            else:
+                log.warning(
+                    "Run %s sub-template '%s' step '%s' failed (continuing): %s",
+                    run_id, step.template_id, sub_step.name, result,
+                )
+
+        return sub_results
+
+    def _sync_load_template(self, template_id: str) -> dict | None:
+        with DB.connect() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT definition FROM experiment_templates WHERE id = %s",
+                    (template_id,),
+                )
+                row = cur.fetchone()
+        return dict(row)["definition"] if row else None
+
     async def _execute_topic_link(self, step: StepDef, run_id: str = "") -> dict:
         operation = step.operation or "create"
         if operation == "create":
@@ -501,6 +611,11 @@ class ExperimentEngine:
                 "telemetry_metric": step.telemetry_metric,
                 "condition": step.condition,
                 "on_timeout": step.on_timeout,
+            }
+        if step.type == "template":
+            return {
+                "template_id": step.template_id,
+                "template_params": resolve_params_in_step(step.template_params, step_results),
             }
         return None
 
