@@ -2,10 +2,21 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+
+def pytest_configure(config):
+    """Set required env vars before any app module is imported during collection."""
+    os.environ.setdefault("LUCID_DB_URL", "postgresql://fake:fake@localhost/fake")
+    os.environ.setdefault("EMQX_API_URL", "http://localhost:18083")
+    os.environ.setdefault("EMQX_API_USERNAME", "fake")
+    os.environ.setdefault("EMQX_API_PASSWORD", "fake")
+    os.environ.setdefault("LUCID_MQTT_USERNAME", "fake")
+    os.environ.setdefault("LUCID_AUTH_URL", "http://localhost:4000")
 
 
 class FakeWebSocketManager:
@@ -79,3 +90,33 @@ def rrm():
 @pytest.fixture
 def fake_app(ws_mgr, bridge, rrm):
     return make_app(ws_mgr=ws_mgr, bridge=bridge, rrm=rrm)
+
+
+@pytest.fixture
+def api_client(bridge, rrm, ws_mgr):
+    """TestClient with FakeBridge injected; DB patched to no-op."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from unittest.mock import MagicMock, patch
+    from app.routes.api import router
+
+    test_app = FastAPI()
+    test_app.include_router(router)
+    test_app.state.bridge = bridge
+    test_app.state.rrm = rrm
+    test_app.state.ws_mgr = ws_mgr
+
+    mock_conn = MagicMock()
+    mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+    mock_conn.__exit__ = MagicMock(return_value=False)
+    mock_conn.cursor = MagicMock(return_value=mock_conn)
+    mock_conn.__iter__ = MagicMock(return_value=iter([]))
+    mock_conn.fetchall = MagicMock(return_value=[])
+    mock_conn.fetchone = MagicMock(return_value=None)
+
+    with patch("app.command_dispatch.DB") as mock_db:
+        mock_db.connect.return_value = mock_conn
+        mock_db.ensure_agent = MagicMock()
+        mock_db.ensure_component = MagicMock()
+        with TestClient(test_app) as client:
+            yield client
