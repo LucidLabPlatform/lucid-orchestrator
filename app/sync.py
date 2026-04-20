@@ -72,6 +72,15 @@ def sync_topic_links(app, strict: bool = False) -> dict:
                 seen_rule_ids.add(rule_id)
                 existing = local_by_rule_id.get(rule_id)
                 if existing is None:
+                    # Re-check: engine may have inserted this rule between our
+                    # initial snapshot and now (race condition).
+                    cur.execute(
+                        "SELECT id FROM topic_links WHERE emqx_rule_id = %s LIMIT 1",
+                        (rule_id,),
+                    )
+                    if cur.fetchone() is not None:
+                        updated += 1
+                        continue
                     cur.execute(
                         """
                         INSERT INTO topic_links (

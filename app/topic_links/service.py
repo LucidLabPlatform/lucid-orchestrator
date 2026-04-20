@@ -111,6 +111,16 @@ def create_topic_link(
     owner_id: str | None = None,
     link_id: str | None = None,
 ) -> dict:
+    # Delete any existing link with the same source+target to prevent duplicates
+    # when a setup template is run more than once.
+    with DB.connect() as conn:
+        existing = find_topic_link_by_topics(conn, source_topic=source_topic, target_topic=target_topic)
+    if existing:
+        try:
+            delete_topic_link(app, existing["id"], ignore_lock=True)
+        except LookupError:
+            pass
+
     row_id = link_id or str(uuid.uuid4())
     created_at = _now()
     link_def = TopicLinkDef(
