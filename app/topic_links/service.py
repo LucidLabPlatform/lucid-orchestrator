@@ -262,6 +262,53 @@ def delete_owned_topic_links(app, owner_type: str, owner_id: str) -> list[dict]:
     return removed
 
 
+def find_topic_link_by_topics(
+    conn,
+    *,
+    source_topic: str,
+    target_topic: str,
+) -> dict | None:
+    """Find any topic link by source + target topic, regardless of owner."""
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT
+                tl.id,
+                tl.name,
+                tl.source_topic,
+                tl.target_topic,
+                tl.select_clause,
+                tl.payload_template,
+                tl.qos,
+                tl.emqx_rule_id,
+                tl.enabled,
+                tl.created_at,
+                tl.updated_at,
+                tl.last_synced_at,
+                tl.sync_status,
+                tl.last_error,
+                tl.owner_type,
+                tl.owner_id,
+                er.status AS owner_run_status,
+                CASE
+                    WHEN tl.owner_type = 'experiment-run' AND er.status IN ('pending', 'running') THEN TRUE
+                    ELSE FALSE
+                END AS read_only
+            FROM topic_links tl
+            LEFT JOIN experiment_runs er
+              ON tl.owner_type = 'experiment-run'
+             AND tl.owner_id = er.id
+            WHERE tl.source_topic = %s
+              AND tl.target_topic = %s
+            ORDER BY tl.created_at DESC, tl.id DESC
+            LIMIT 1
+            """,
+            (source_topic, target_topic),
+        )
+        row = cur.fetchone()
+    return dict(row) if row else None
+
+
 def find_owned_topic_link(
     conn,
     *,

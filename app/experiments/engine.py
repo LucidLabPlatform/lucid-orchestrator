@@ -132,7 +132,6 @@ class ExperimentEngine:
             else:
                 log.warning("Run %s step '%s' failed (continuing): %s", run_id, step.name, result)
 
-        await self._cleanup_topic_links(run_id)
         ended_at = _now()
         await self._db(self._sync_update_run, run_id, STATUS_COMPLETED, None, ended_at, None)
         await self._broadcast({"type": "experiment_completed", "run_id": run_id, "ts": ended_at.isoformat()})
@@ -526,16 +525,23 @@ class ExperimentEngine:
             }
 
         with DB.connect() as conn:
-            existing = topic_link_service.find_owned_topic_link(
-                conn,
-                owner_type="experiment-run",
-                owner_id=run_id,
-                source_topic=step.source_topic or "",
-                target_topic=step.target_topic or "",
-            )
+            if operation == "delete":
+                existing = topic_link_service.find_topic_link_by_topics(
+                    conn,
+                    source_topic=step.source_topic or "",
+                    target_topic=step.target_topic or "",
+                )
+            else:
+                existing = topic_link_service.find_owned_topic_link(
+                    conn,
+                    owner_type="experiment-run",
+                    owner_id=run_id,
+                    source_topic=step.source_topic or "",
+                    target_topic=step.target_topic or "",
+                )
         if existing is None:
             raise RuntimeError(
-                f"No experiment-owned topic link found for {step.source_topic} -> {step.target_topic}"
+                f"No topic link found for {step.source_topic} -> {step.target_topic}"
             )
 
         loop = asyncio.get_running_loop()
