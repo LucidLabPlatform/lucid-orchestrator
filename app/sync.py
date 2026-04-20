@@ -72,15 +72,9 @@ def sync_topic_links(app, strict: bool = False) -> dict:
                 seen_rule_ids.add(rule_id)
                 existing = local_by_rule_id.get(rule_id)
                 if existing is None:
-                    # Re-check: engine may have inserted this rule between our
-                    # initial snapshot and now (race condition).
-                    cur.execute(
-                        "SELECT id FROM topic_links WHERE emqx_rule_id = %s LIMIT 1",
-                        (rule_id,),
-                    )
-                    if cur.fetchone() is not None:
-                        updated += 1
-                        continue
+                    # Engine may have inserted this rule after our snapshot.
+                    # ON CONFLICT DO NOTHING prevents a duplicate 'manual' row
+                    # from being inserted if the engine already owns this rule_id.
                     cur.execute(
                         """
                         INSERT INTO topic_links (
@@ -90,6 +84,7 @@ def sync_topic_links(app, strict: bool = False) -> dict:
                             owner_type, owner_id
                         )
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'synced', NULL, 'manual', NULL)
+                        ON CONFLICT (emqx_rule_id) DO NOTHING
                         """,
                         (
                             str(uuid.uuid4()),
@@ -106,7 +101,8 @@ def sync_topic_links(app, strict: bool = False) -> dict:
                             synced_at,
                         ),
                     )
-                    created += 1
+                    if cur.rowcount:
+                        created += 1
                     continue
 
                 changed = any(

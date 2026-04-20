@@ -125,6 +125,7 @@ def init_schema(url: str | None = None) -> None:
             cur.execute("CREATE INDEX IF NOT EXISTS topic_links_created_at_idx ON topic_links(created_at DESC)")
             cur.execute("CREATE INDEX IF NOT EXISTS topic_links_last_synced_idx ON topic_links(last_synced_at DESC)")
             cur.execute("CREATE INDEX IF NOT EXISTS topic_links_owner_idx ON topic_links(owner_type, owner_id)")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS topic_links_emqx_rule_id_unique ON topic_links(emqx_rule_id) WHERE emqx_rule_id IS NOT NULL")
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS experiment_templates (

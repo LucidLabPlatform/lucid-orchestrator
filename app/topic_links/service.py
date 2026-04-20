@@ -144,6 +144,21 @@ def create_topic_link(
                     owner_type, owner_id
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (emqx_rule_id) DO UPDATE SET
+                    owner_type = EXCLUDED.owner_type,
+                    owner_id   = EXCLUDED.owner_id,
+                    name       = EXCLUDED.name,
+                    source_topic    = EXCLUDED.source_topic,
+                    target_topic    = EXCLUDED.target_topic,
+                    select_clause   = EXCLUDED.select_clause,
+                    payload_template = EXCLUDED.payload_template,
+                    qos             = EXCLUDED.qos,
+                    enabled         = EXCLUDED.enabled,
+                    updated_at      = EXCLUDED.updated_at,
+                    last_synced_at  = EXCLUDED.last_synced_at,
+                    sync_status     = EXCLUDED.sync_status,
+                    last_error      = EXCLUDED.last_error
+                RETURNING id
                 """,
                 (
                     row_id,
@@ -164,10 +179,12 @@ def create_topic_link(
                     owner_id,
                 ),
             )
+            result = cur.fetchone()
+            actual_id = result[0] if result else row_id
             DB.set_sync_state(conn, TOPIC_LINKS_DOMAIN, status="synced", synced_at=created_at, error=None)
         conn.commit()
 
-        row = _fetch_link(conn, row_id)
+        row = _fetch_link(conn, actual_id)
     if row is None:
         raise RuntimeError("Created topic link could not be reloaded")
     return row
