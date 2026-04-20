@@ -79,11 +79,45 @@ COMPONENT_TEMPLATES: dict[str, dict | None] = {
     "roslaunch_stop": None,
     "rosbag_start": {"output_dir": "", "topics": []},
     "rosbag_stop": None,
-    # TouchDesigner
-    "launch": {"project_file": ""},
-    "terminate": None,
-    "ndi/input/set": {"ndi_inputs": {}},
-    "ndi/output/set": {"ndi_outputs": {}},
+    # exec
+    "run": {"command": "", "timeout_s": 30},
+    "spawn": {"name": "", "command": ""},
+    "kill": {"name": ""},
+    "list": None,
+    # KNX
+    "light/on": {"address": ""},
+    "light/off": {"address": ""},
+    "light/brightness/set": {"address": "", "brightness": 128},
+    # NDI
+    "receive/start": {"source_name": ""},
+    "receive/stop": None,
+    "send/start": {"stream_name": ""},
+    "send/stop": None,
+    # projector
+    "power/on": None,
+    "power/off": None,
+    "input/hdmi1": None,
+    "input/hdmi2": None,
+    "aspect/4-3": None,
+    "aspect/16-9": None,
+    "navigate/up": None,
+    "navigate/down": None,
+    "navigate/left": None,
+    "navigate/right": None,
+    "navigate/enter": None,
+    "navigate/menu": None,
+    "navigate/back": None,
+    "keystone/set": {"horizontal": 0, "vertical": 0},
+    "image-shift/set": {"horizontal": 0, "vertical": 0},
+    # viz
+    "start_arena": None,
+    "stop_arena": None,
+    "start_touchdesigner": None,
+    "stop_touchdesigner": None,
+    "restart": None,
+    # chrony
+    "start_sync": None,
+    "stop_sync": None,
     # AI specialist
     "task": {"prompt": ""},
     "process_image": {"image_url": "", "prompt": ""},
@@ -124,7 +158,7 @@ def get_component_commands(capabilities: list[str] | None) -> list[dict]:
             category = "effects"
         elif action.startswith("cfg/"):
             category = "config"
-        elif action in ("ping", "reset", "clear", "start", "stop"):
+        elif action in ("ping", "reset", "clear", "restart") or action.startswith(("start", "stop")):
             category = "lifecycle"
         else:
             category = "custom"
