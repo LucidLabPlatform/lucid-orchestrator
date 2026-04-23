@@ -70,6 +70,7 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
                 m.version AS metadata_version,
                 m.platform,
                 m.architecture,
+                m.ip_address,
                 m.received_ts AS metadata_received_ts,
                 cfg.heartbeat_s,
                 cfg.received_ts AS cfg_received_ts,
@@ -256,6 +257,7 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
                     "version": row["metadata_version"],
                     "platform": row["platform"],
                     "architecture": row["architecture"],
+                    "ip_address": row["ip_address"],
                     "received_ts": row["metadata_received_ts"],
                 } if has_metadata else None,
                 "cfg": (cfg if cfg else {"received_ts": max(

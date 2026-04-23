@@ -262,10 +262,21 @@ class ExperimentEngine:
 
         return False, last_error
 
+    @staticmethod
+    def _should_skip(step: StepDef) -> bool:
+        """Return True if the step has a ``when`` guard that evaluated to falsy."""
+        if step.when is None:
+            return False
+        val = step.when.strip()
+        return val == "" or val.lower() == "false"
+
     async def _execute_step(
         self, step: StepDef, step_results: dict[str, Any], run_id: str = "", step_index: int = 0,
         _template_depth: int = 0,
     ) -> Any:
+        if self._should_skip(step):
+            log.info("Run %s step '%s' skipped (when=%r)", run_id, step.name, step.when)
+            return {"skipped": True}
         if step.type == "command":
             return await self._execute_command(step, step_results)
         if step.type == "delay":

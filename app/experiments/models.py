@@ -39,6 +39,8 @@ class StepDef(BaseModel):
     # template step fields
     template_id: str | None = None
     template_params: dict[str, Any] = Field(default_factory=dict)
+    # conditional execution — step is skipped when the resolved value is empty or "false"
+    when: str | None = None
 
     @model_validator(mode="after")
     def _validate_type_fields(self) -> "StepDef":
