@@ -295,16 +295,25 @@ class ExperimentEngine:
 
         resolved_params = resolve_params_in_step(step.params, step_results)
         timeout = float(step.timeout_s) if isinstance(step.timeout_s, str) else step.timeout_s
-        response = await send_command(
-            self._app,
-            agent_id=step.agent_id,
-            component_id=step.component_id,
-            action=step.action,
-            body=resolved_params,
-            wait=True,
-            timeout_s=timeout,
-        )
-        return response.get("result")
+
+        try:
+            response = await send_command(
+                self._app,
+                agent_id=step.agent_id,
+                component_id=step.component_id,
+                action=step.action,
+                body=resolved_params,
+                wait=True,
+                timeout_s=timeout,
+            )
+        except asyncio.TimeoutError:
+            target = f"{step.agent_id}/{step.component_id}/{step.action}" if step.component_id else f"{step.agent_id}/{step.action}"
+            raise TimeoutError(f"No response from {target} after {timeout}s")
+
+        result = response.get("result") or {}
+        if isinstance(result, dict) and result.get("ok") is False:
+            raise RuntimeError(json.dumps(result, default=str))
+        return result
 
     async def _execute_delay(self, step: StepDef) -> dict:
         duration = float(step.duration_s) if isinstance(step.duration_s, str) else step.duration_s
