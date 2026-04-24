@@ -273,6 +273,8 @@ class ExperimentEngine:
         """Return True if the step has a ``when`` guard that evaluated to falsy."""
         if step.when is None:
             return False
+        if isinstance(step.when, bool):
+            return not step.when
         val = step.when.strip()
         return val == "" or val.lower() == "false"
 
