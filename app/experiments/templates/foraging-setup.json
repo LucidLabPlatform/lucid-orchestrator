@@ -1,0 +1,90 @@
+{
+  "id": "foraging-setup",
+  "name": "Foraging Setup",
+  "version": "1.0.0",
+  "description": "Full setup: arena startup, chrony sync, ROS environment bringup, ros_bridge connections, OptiTrack and camera launches.",
+  "tags": ["foraging", "setup"],
+  "parameters": {
+    "robot_id":           { "type": "string",  "default": "rosbot",                          "required": true,  "description": "ROSbot agent ID" },
+    "hydra_agent_id":     { "type": "string",  "default": "hydra",                           "required": true,  "description": "Hydra agent (OptiTrack, chrony)" },
+    "camera_agent_id":    { "type": "string",  "default": "camera",                          "required": false, "description": "Camera agent" },
+    "led_agent_id":       { "type": "string",  "default": "led_truss",                       "required": false, "description": "LED strip agent" },
+    "socrates_agent_id":  { "type": "string",  "default": "socrates",                        "required": false, "description": "Viz agent" },
+    "launch_arena":       { "type": "boolean", "default": true,                              "required": false, "description": "Run arena startup" },
+    "launch_rosbot":      { "type": "boolean", "default": true,                              "required": false, "description": "Start rosbot docker and ros_bridge" },
+    "launch_hydra":       { "type": "boolean", "default": true,                              "required": false, "description": "Start hydra roscore, ros_bridge, OptiTrack" },
+    "launch_camera":      { "type": "boolean", "default": false,                             "required": false, "description": "Start camera roscore, ros_bridge, camera launch" },
+    "launch_led":         { "type": "boolean", "default": true,                              "required": false, "description": "Show LED transitions" },
+    "robot_host":         { "type": "string",  "default": "husarion@10.205.3.20",            "required": false, "description": "SSH target for ROSbot" },
+    "compose_file":       { "type": "string",  "default": "compose_farah.yaml",              "required": false, "description": "Docker compose file on ROSbot" },
+    "settle_s":           { "type": "float",   "default": 30.0,                              "required": false, "description": "Seconds to wait after ROS env starts" },
+    "sensor_settle_s":    { "type": "float",   "default": 10.0,                              "required": false, "description": "Seconds to wait after sensor launches" }
+  },
+  "steps": [
+    {
+      "name": "arena-startup",
+      "type": "template",
+      "when": "${launch_arena}",
+      "on_failure": "abort",
+      "template_id": "arena-startup"
+    },
+
+    {
+      "name": "sync-clocks",
+      "type": "parallel",
+      "on_failure": "abort",
+      "steps": [
+        { "name": "sync-clock-hydra",  "type": "command", "when": "${launch_hydra}",  "on_failure": "abort", "agent_id": "${hydra_agent_id}", "component_id": "chrony", "action": "start_sync", "timeout_s": 30, "params": {} },
+        { "name": "sync-clock-rosbot", "type": "command", "when": "${launch_rosbot}", "on_failure": "abort", "agent_id": "${robot_id}",       "component_id": "chrony", "action": "start_sync", "timeout_s": 30, "params": {} }
+      ]
+    },
+
+    {
+      "name": "start-ros-environment",
+      "type": "parallel",
+      "on_failure": "abort",
+      "steps": [
+        { "name": "start-roscore-hydra",  "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${hydra_agent_id}",  "component_id": "exec", "action": "spawn", "timeout_s": 15, "params": { "name": "roscore", "command": "source /opt/ros/noetic/setup.bash && roscore" } },
+        { "name": "start-roscore-camera", "type": "command", "when": "${launch_camera}", "on_failure": "continue", "agent_id": "${camera_agent_id}", "component_id": "exec", "action": "spawn", "timeout_s": 15, "params": { "name": "roscore", "command": "source /opt/ros/noetic/setup.bash && roscore" } },
+        { "name": "start-rosbot-docker",  "type": "command", "when": "${launch_rosbot}", "on_failure": "abort",    "agent_id": "${robot_id}",        "component_id": "exec", "action": "spawn", "timeout_s": 15, "retries": 1, "params": { "name": "rosbot_docker", "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${robot_host} 'docker compose -f ${compose_file} down && docker compose -f ${compose_file} up'" } }
+      ]
+    },
+
+    {
+      "name": "wait-for-ros-startup",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": "${settle_s}"
+    },
+
+    {
+      "name": "connect-ros-bridges",
+      "type": "parallel",
+      "on_failure": "abort",
+      "steps": [
+        { "name": "connect-hydra-ros-bridge",  "type": "command", "when": "${launch_hydra}",  "on_failure": "abort", "agent_id": "${hydra_agent_id}",  "component_id": "ros_bridge", "action": "retry", "timeout_s": 30, "params": { "force": true } },
+        { "name": "connect-rosbot-ros-bridge", "type": "command", "when": "${launch_rosbot}", "on_failure": "abort", "agent_id": "${robot_id}",        "component_id": "ros_bridge", "action": "retry", "timeout_s": 30, "params": { "force": true } },
+        { "name": "connect-camera-ros-bridge", "type": "command", "when": "${launch_camera}", "on_failure": "abort", "agent_id": "${camera_agent_id}", "component_id": "ros_bridge", "action": "retry", "timeout_s": 30, "params": { "force": true } }
+      ]
+    },
+
+    {
+      "name": "start-sensors",
+      "type": "parallel",
+      "on_failure": "abort",
+      "steps": [
+        { "name": "start-optitrack", "type": "command", "when": "${launch_hydra}",  "on_failure": "abort", "retries": 1, "agent_id": "${hydra_agent_id}",  "component_id": "ros_bridge", "action": "roslaunch-start", "timeout_s": 30, "params": { "data": { "package": "optitrack_ros_communication", "launch_file": "optitrack_nodes.launch", "args": { "serverIP": "10.205.3.3", "namespace": "natnet_ros", "clientIP": "10.205.10.254", "serverType": "unicast" } } } },
+        { "name": "start-camera",    "type": "command", "when": "${launch_camera}", "on_failure": "abort", "retries": 1, "agent_id": "${camera_agent_id}", "component_id": "ros_bridge", "action": "roslaunch-start", "timeout_s": 30, "params": { "data": { "package": "remote_lab", "launch_file": "start_camera.launch" } } }
+      ]
+    },
+
+    {
+      "name": "wait-for-sensors",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": "${sensor_settle_s}"
+    },
+
+    { "name": "led-setup-complete", "type": "command", "when": "${launch_led}", "on_failure": "continue", "agent_id": "${led_agent_id}", "component_id": "led_strip", "action": "effect/color-wipe", "timeout_s": 10, "params": {} }
+  ]
+}

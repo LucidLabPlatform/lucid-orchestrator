@@ -1,0 +1,91 @@
+{
+  "id": "foraging-reset",
+  "name": "Foraging Reset",
+  "version": "1.0.0",
+  "description": "Enables reset telemetry, creates OptiTrack→rosbot link, records reset rosbags, runs reset-to-start and waits for success.",
+  "tags": ["foraging", "reset"],
+  "parameters": {
+    "robot_id":                    { "type": "string",  "default": "rosbot",      "required": true,  "description": "ROSbot agent ID" },
+    "hydra_agent_id":              { "type": "string",  "default": "hydra",       "required": true,  "description": "Hydra agent (OptiTrack)" },
+    "optitrack_agent_id":          { "type": "string",  "default": "hydra",       "required": false, "description": "OptiTrack recording agent" },
+    "led_agent_id":                { "type": "string",  "default": "led_truss",   "required": false, "description": "LED strip agent" },
+    "launch_rosbot":               { "type": "boolean", "default": true,          "required": false, "description": "Enable rosbot telemetry and rosbag" },
+    "launch_hydra":                { "type": "boolean", "default": true,          "required": false, "description": "Enable OptiTrack telemetry, topic link, and rosbag" },
+    "launch_led":                  { "type": "boolean", "default": true,          "required": false, "description": "Show LED transitions" },
+    "goal_x":                      { "type": "float",   "default": 2.987614393234253,  "required": false, "description": "Start X (OptiTrack frame)" },
+    "goal_y":                      { "type": "float",   "default": 1.837099552154541,  "required": false, "description": "Start Y (OptiTrack frame)" },
+    "goal_yaw":                    { "type": "float",   "default": -2.3711036734611257, "required": false, "description": "Start yaw (radians)" },
+    "pos_tolerance":               { "type": "float",   "default": 0.10,          "required": false, "description": "Position tolerance (metres)" },
+    "yaw_tolerance":               { "type": "float",   "default": 0.15,          "required": false, "description": "Yaw tolerance (radians)" },
+    "rosbag_output_dir":           { "type": "string",  "default": "~/data/bags", "required": false, "description": "Rosbag dir on robot" },
+    "optitrack_rosbag_output_dir": { "type": "string",  "default": "~/data/bags", "required": false, "description": "Rosbag dir on OptiTrack agent" }
+  },
+  "steps": [
+    {
+      "name": "enable-reset-telemetry",
+      "type": "parallel",
+      "on_failure": "abort",
+      "steps": [
+        { "name": "enable-optitrack-telemetry",      "type": "command", "when": "${launch_hydra}",  "on_failure": "abort", "agent_id": "${hydra_agent_id}", "component_id": "ros_bridge", "action": "cfg/telemetry/set", "timeout_s": 10, "params": { "set": { "optitrack_umh_5": { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 }, "natnet_ros_umh_6_pose": { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 } } } },
+        { "name": "enable-reset-status-telemetry",   "type": "command", "when": "${launch_rosbot}", "on_failure": "abort", "agent_id": "${robot_id}",       "component_id": "ros_bridge", "action": "cfg/telemetry/set", "timeout_s": 10, "params": { "set": { "reset_status": { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 } } } }
+      ]
+    },
+
+    {
+      "name": "create-optitrack-to-rosbot-link",
+      "type": "topic_link",
+      "when": "${launch_hydra}",
+      "on_failure": "abort",
+      "operation": "create",
+      "source_topic": "lucid/agents/${hydra_agent_id}/components/ros_bridge/telemetry/optitrack_umh_5",
+      "target_topic": "lucid/agents/${robot_id}/components/ros_bridge/cmd/optitrack_pose",
+      "select_clause": "payload.value as value",
+      "payload_template": "{\"data\": ${value}}",
+      "qos": 0
+    },
+
+    {
+      "name": "start-reset-recordings",
+      "type": "parallel",
+      "on_failure": "continue",
+      "steps": [
+        { "name": "start-rosbot-reset-rosbag",    "type": "command", "when": "${launch_rosbot}", "on_failure": "continue", "agent_id": "${robot_id}",           "component_id": "ros_bridge", "action": "rosbag-start", "timeout_s": 15, "params": { "data": { "output_dir": "${rosbag_output_dir}",           "prefix": "reset" } } },
+        { "name": "start-optitrack-reset-rosbag",  "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${optitrack_agent_id}", "component_id": "ros_bridge", "action": "rosbag-start", "timeout_s": 15, "params": { "data": { "output_dir": "${optitrack_rosbag_output_dir}", "prefix": "reset" } } }
+      ]
+    },
+
+    {
+      "name": "start-reset-to-start",
+      "type": "command",
+      "on_failure": "abort",
+      "agent_id": "${robot_id}",
+      "component_id": "ros_bridge",
+      "action": "roslaunch-start",
+      "timeout_s": 30,
+      "params": { "data": { "package": "foraging_bringup", "launch_file": "reset_to_start.launch", "args": { "goal_x": "${goal_x}", "goal_y": "${goal_y}", "goal_yaw": "${goal_yaw}", "pos_tolerance": "${pos_tolerance}", "yaw_tolerance": "${yaw_tolerance}" } } }
+    },
+
+    {
+      "name": "wait-for-reset-success",
+      "type": "wait_for_condition",
+      "on_failure": "abort",
+      "agent_id": "${robot_id}",
+      "component_id": "ros_bridge",
+      "telemetry_metric": "reset_status",
+      "condition": { "field": "value.state", "equals": "success" },
+      "timeout_s": 180
+    },
+
+    {
+      "name": "stop-reset-recordings",
+      "type": "parallel",
+      "on_failure": "continue",
+      "steps": [
+        { "name": "stop-rosbot-reset-rosbag",   "type": "command", "when": "${launch_rosbot}", "on_failure": "continue", "agent_id": "${robot_id}",           "component_id": "ros_bridge", "action": "rosbag-stop", "timeout_s": 15, "params": {} },
+        { "name": "stop-optitrack-reset-rosbag", "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${optitrack_agent_id}", "component_id": "ros_bridge", "action": "rosbag-stop", "timeout_s": 15, "params": {} }
+      ]
+    },
+
+    { "name": "led-reset-complete", "type": "command", "when": "${launch_led}", "on_failure": "continue", "agent_id": "${led_agent_id}", "component_id": "led_strip", "action": "effect/color-wipe", "timeout_s": 10, "params": {} }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "foraging-reset-teardown",
+  "name": "Foraging Reset Teardown",
+  "version": "1.0.0",
+  "description": "Disables reset-phase telemetry. Topic links are auto-deleted.",
+  "tags": ["foraging", "teardown"],
+  "parameters": {
+    "robot_id":       { "type": "string",  "default": "rosbot", "required": true,  "description": "ROSbot agent ID" },
+    "hydra_agent_id": { "type": "string",  "default": "hydra",  "required": true,  "description": "Hydra agent" },
+    "launch_rosbot":  { "type": "boolean", "default": true,     "required": false, "description": "Disable rosbot reset telemetry" },
+    "launch_hydra":   { "type": "boolean", "default": true,     "required": false, "description": "Disable hydra OptiTrack telemetry" }
+  },
+  "steps": [
+    {
+      "name": "disable-reset-telemetry",
+      "type": "parallel",
+      "on_failure": "continue",
+      "steps": [
+        { "name": "disable-optitrack-telemetry",    "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${hydra_agent_id}", "component_id": "ros_bridge", "action": "cfg/telemetry/set", "timeout_s": 10, "params": { "set": { "optitrack_umh_5": { "enabled": false }, "natnet_ros_umh_6_pose": { "enabled": false } } } },
+        { "name": "disable-reset-status-telemetry", "type": "command", "when": "${launch_rosbot}", "on_failure": "continue", "agent_id": "${robot_id}",       "component_id": "ros_bridge", "action": "cfg/telemetry/set", "timeout_s": 10, "params": { "set": { "reset_status": { "enabled": false } } } }
+      ]
+    }
+  ]
+}

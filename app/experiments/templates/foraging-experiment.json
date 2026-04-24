@@ -1,349 +1,167 @@
 {
   "id": "foraging-experiment",
   "name": "Foraging Experiment",
-  "version": "2.0.0",
-  "description": "Full foraging experiment. Navigates robot to start using OptiTrack, resets odometry, waits for puck placement with LED and arena cues, runs foraging with live LED and visualisation feedback, then stops cleanly.",
-  "tags": ["foraging", "robotics"],
+  "version": "3.0.0",
+  "description": "Full foraging experiment: setup → reset → puck approval → foraging run → teardowns. Toggle agents with launch_* booleans.",
+  "tags": ["foraging", "experiment"],
   "parameters": {
-    "robot_id":           { "type": "string", "default": "rosbot",                      "required": true,  "description": "Agent ID of the robot (ROS bridge + exec + foraging)" },
-    "led_agent_id":       { "type": "string", "default": null,                           "required": true,  "description": "Agent ID hosting the LED strip component" },
-    "camera_agent_id":    { "type": "string", "default": null,                           "required": true,  "description": "Agent ID hosting the camera recording component" },
-    "socrates_agent_id":  { "type": "string", "default": "socrates",                    "required": true,  "description": "Agent ID hosting the viz component (arena display)" },
-    "optitrack_agent_id": { "type": "string", "default": "optitrack",                   "required": true,  "description": "Agent ID hosting the OptiTrack ROS bridge" },
-    "duration_s":         { "type": "float",  "default": "300",                          "required": false, "description": "Duration of the active foraging phase in seconds" },
-    "ros_launch_timeout_s":{ "type": "float", "default": "30",                           "required": false, "description": "Seconds to wait for ROS nodes to start" },
-    "roslaunch_package":  { "type": "string", "default": "foraging_bringup",             "required": false, "description": "ROS package containing the launch file" },
-    "roslaunch_file":     { "type": "string", "default": "foraging_experiment.launch",   "required": false, "description": "Launch file to run on the ROSbot" },
-    "rosbag_output_dir":  { "type": "string", "default": "/home/forfaly/bags",           "required": false, "description": "Directory on the ROSbot to write rosbag files" },
-    "start_pos_x":        { "type": "float",  "default": "0.0",                          "required": false, "description": "Robot start position X in map frame (metres)" },
-    "start_pos_y":        { "type": "float",  "default": "0.0",                          "required": false, "description": "Robot start position Y in map frame (metres)" },
-    "start_pos_w":        { "type": "float",  "default": "1.0",                          "required": false, "description": "Start orientation quaternion W (1.0 = facing +X axis)" }
+    "robot_id":                    { "type": "string",  "default": "rosbot",                          "required": true,  "description": "ROSbot agent ID" },
+    "hydra_agent_id":              { "type": "string",  "default": "hydra",                           "required": true,  "description": "Hydra agent (OptiTrack, chrony)" },
+    "optitrack_agent_id":          { "type": "string",  "default": "hydra",                           "required": false, "description": "OptiTrack recording agent" },
+    "camera_agent_id":             { "type": "string",  "default": "camera",                          "required": false, "description": "Camera agent" },
+    "socrates_agent_id":           { "type": "string",  "default": "socrates",                        "required": false, "description": "Viz agent" },
+    "led_agent_id":                { "type": "string",  "default": "led_truss",                       "required": false, "description": "LED strip agent" },
+    "launch_arena":                { "type": "boolean", "default": true,                              "required": false, "description": "Run arena startup" },
+    "launch_rosbot":               { "type": "boolean", "default": true,                              "required": false, "description": "Start rosbot docker and ros_bridge" },
+    "launch_hydra":                { "type": "boolean", "default": true,                              "required": false, "description": "Start hydra roscore, ros_bridge, OptiTrack" },
+    "launch_camera":               { "type": "boolean", "default": false,                             "required": false, "description": "Start camera roscore, ros_bridge, camera" },
+    "launch_socrates":             { "type": "boolean", "default": false,                             "required": false, "description": "Create viz topic links" },
+    "launch_led":                  { "type": "boolean", "default": true,                              "required": false, "description": "Show LED transitions" },
+    "robot_host":                  { "type": "string",  "default": "husarion@10.205.3.20",            "required": false, "description": "SSH target for ROSbot" },
+    "compose_file":                { "type": "string",  "default": "compose_farah.yaml",              "required": false, "description": "Docker compose file on ROSbot" },
+    "goal_x":                      { "type": "float",   "default": 2.987614393234253,                 "required": false, "description": "Start X (OptiTrack frame)" },
+    "goal_y":                      { "type": "float",   "default": 1.837099552154541,                 "required": false, "description": "Start Y (OptiTrack frame)" },
+    "goal_yaw":                    { "type": "float",   "default": -2.3711036734611257,               "required": false, "description": "Start yaw (radians)" },
+    "pos_tolerance":               { "type": "float",   "default": 0.10,                              "required": false, "description": "Position tolerance (metres)" },
+    "yaw_tolerance":               { "type": "float",   "default": 0.15,                              "required": false, "description": "Yaw tolerance (radians)" },
+    "rosbag_output_dir":           { "type": "string",  "default": "~/data/bags",                     "required": false, "description": "Rosbag dir on robot" },
+    "optitrack_rosbag_output_dir": { "type": "string",  "default": "~/data/bags",                     "required": false, "description": "Rosbag dir on OptiTrack agent" },
+    "roslaunch_package":           { "type": "string",  "default": "foraging_bringup",                "required": false, "description": "ROS package for foraging" },
+    "roslaunch_file":              { "type": "string",  "default": "foraging_experiment.launch",      "required": false, "description": "Launch file for foraging" },
+    "run_setup":                   { "type": "boolean", "default": true,                              "required": false, "description": "Run setup phase" },
+    "run_reset":                   { "type": "boolean", "default": true,                              "required": false, "description": "Run reset-to-start phase" },
+    "run_puck_approval":           { "type": "boolean", "default": true,                              "required": false, "description": "Run puck placement approval" },
+    "run_foraging":                { "type": "boolean", "default": true,                              "required": false, "description": "Run foraging phase" },
+    "run_teardown":                { "type": "boolean", "default": true,                              "required": false, "description": "Run teardown phases" }
   },
   "steps": [
     {
-      "name": "preflight_ping",
-      "type": "parallel",
+      "name": "foraging-setup",
+      "type": "template",
+      "when": "${run_setup}",
       "on_failure": "abort",
-      "steps": [
-        { "name": "ping_robot",     "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${robot_id}",         "action": "ping", "timeout_s": 10.0 },
-        { "name": "ping_led",       "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${led_agent_id}",     "action": "ping", "timeout_s": 10.0 },
-        { "name": "ping_camera",    "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${camera_agent_id}", "action": "ping", "timeout_s": 10.0 },
-        { "name": "ping_socrates",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${socrates_agent_id}","action": "ping", "timeout_s": 10.0 },
-        { "name": "ping_optitrack", "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${optitrack_agent_id}","action": "ping","timeout_s": 10.0 }
-      ]
-    },
-    {
-      "name": "led_setup_glow",
-      "type": "command",
-      "on_failure": "continue",
-      "retries": 0,
-      "agent_id": "${led_agent_id}",
-      "component_id": "led_strip",
-      "action": "effect/glow",
-      "timeout_s": 10.0,
-      "params": { "color": { "r": 255, "g": 200, "b": 0 }, "wait_ms": 10 }
-    },
-    {
-      "name": "navigate_to_start",
-      "type": "command",
-      "on_failure": "abort",
-      "retries": 0,
-      "agent_id": "${robot_id}",
-      "component_id": "exec",
-      "action": "run",
-      "timeout_s": 10.0,
-      "params": {
-        "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no husarion@10.205.3.20 \"source /opt/ros/noetic/setup.bash && rostopic pub -1 /move_base/goal move_base_msgs/MoveBaseActionGoal 'goal: {target_pose: {header: {frame_id: map}, pose: {position: {x: ${start_pos_x}, y: ${start_pos_y}, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: ${start_pos_w}}}}}'\""
+      "template_id": "foraging-setup",
+      "template_params": {
+        "robot_id": "${robot_id}",
+        "hydra_agent_id": "${hydra_agent_id}",
+        "camera_agent_id": "${camera_agent_id}",
+        "led_agent_id": "${led_agent_id}",
+        "socrates_agent_id": "${socrates_agent_id}",
+        "launch_arena": "${launch_arena}",
+        "launch_rosbot": "${launch_rosbot}",
+        "launch_hydra": "${launch_hydra}",
+        "launch_camera": "${launch_camera}",
+        "launch_led": "${launch_led}",
+        "robot_host": "${robot_host}",
+        "compose_file": "${compose_file}"
       }
     },
+
     {
-      "name": "wait_navigation",
-      "type": "delay",
+      "name": "foraging-reset",
+      "type": "template",
+      "when": "${run_reset}",
       "on_failure": "abort",
-      "duration_s": 45.0
-    },
-    {
-      "name": "restart_docker_reset_odom",
-      "type": "command",
-      "on_failure": "abort",
-      "retries": 1,
-      "agent_id": "${robot_id}",
-      "component_id": "exec",
-      "action": "run",
-      "timeout_s": 90.0,
-      "params": {
-        "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no husarion@10.205.3.20 'docker compose -f compose_farah.yaml down && docker compose -f compose_farah.yaml up -d && sleep 15 && port=$(readlink -f /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0) && rosrun rosserial_python serial_node.py $port &'"
+      "template_id": "foraging-reset",
+      "template_params": {
+        "robot_id": "${robot_id}",
+        "hydra_agent_id": "${hydra_agent_id}",
+        "optitrack_agent_id": "${optitrack_agent_id}",
+        "led_agent_id": "${led_agent_id}",
+        "launch_rosbot": "${launch_rosbot}",
+        "launch_hydra": "${launch_hydra}",
+        "launch_led": "${launch_led}",
+        "goal_x": "${goal_x}",
+        "goal_y": "${goal_y}",
+        "goal_yaw": "${goal_yaw}",
+        "pos_tolerance": "${pos_tolerance}",
+        "yaw_tolerance": "${yaw_tolerance}",
+        "rosbag_output_dir": "${rosbag_output_dir}",
+        "optitrack_rosbag_output_dir": "${optitrack_rosbag_output_dir}"
       }
     },
+
     {
-      "name": "roslaunch_stop",
-      "type": "command",
-      "on_failure": "continue",
-      "retries": 0,
-      "agent_id": "${robot_id}",
-      "component_id": "ros_bridge",
-      "action": "roslaunch_stop",
-      "timeout_s": 15.0
-    },
-    {
-      "name": "rosbag_stop",
-      "type": "command",
-      "on_failure": "continue",
-      "retries": 0,
-      "agent_id": "${robot_id}",
-      "component_id": "ros_bridge",
-      "action": "rosbag_stop",
-      "timeout_s": 10.0
-    },
-    {
-      "name": "roslaunch_start",
-      "type": "command",
+      "name": "foraging-puck-approval",
+      "type": "template",
+      "when": "${run_puck_approval}",
       "on_failure": "abort",
-      "retries": 2,
-      "agent_id": "${robot_id}",
-      "component_id": "ros_bridge",
-      "action": "roslaunch_start",
-      "timeout_s": "${ros_launch_timeout_s}",
-      "params": {
-        "data": {
-          "package": "${roslaunch_package}",
-          "launch_file": "${roslaunch_file}"
-        }
+      "template_id": "foraging-puck-approval",
+      "template_params": {
+        "led_agent_id": "${led_agent_id}",
+        "launch_led": "${launch_led}"
       }
     },
+
     {
-      "name": "rosbag_start",
-      "type": "command",
+      "name": "foraging-run",
+      "type": "template",
+      "when": "${run_foraging}",
       "on_failure": "abort",
-      "retries": 0,
-      "agent_id": "${robot_id}",
-      "component_id": "ros_bridge",
-      "action": "rosbag_start",
-      "timeout_s": 10.0,
-      "params": {
-        "data": {
-          "output_dir": "${rosbag_output_dir}",
-          "topics": [
-            "/scan", "/odom", "/tf", "/tf_static", "/cmd_vel", "/map",
-            "/camera/color/image_2fps/compressed",
-            "/camera/depth/image_2fps/compressedDepth",
-            "/camera/depth/camera_info",
-            "/puck/detected/raw", "/puck/detected", "/puck/confirmed", "/puck/registry", "/puck/as_obstacles",
-            "/aruco/detected/raw", "/aruco/detected", "/aruco/confirmed", "/aruco/registry",
-            "/move_base/goal", "/move_base/status", "/move_base/result",
-            "/foraging/status", "/foraging/results"
-          ]
-        }
+      "template_id": "foraging-run",
+      "template_params": {
+        "robot_id": "${robot_id}",
+        "hydra_agent_id": "${hydra_agent_id}",
+        "optitrack_agent_id": "${optitrack_agent_id}",
+        "camera_agent_id": "${camera_agent_id}",
+        "socrates_agent_id": "${socrates_agent_id}",
+        "led_agent_id": "${led_agent_id}",
+        "launch_rosbot": "${launch_rosbot}",
+        "launch_hydra": "${launch_hydra}",
+        "launch_camera": "${launch_camera}",
+        "launch_socrates": "${launch_socrates}",
+        "launch_led": "${launch_led}",
+        "robot_host": "${robot_host}",
+        "compose_file": "${compose_file}",
+        "roslaunch_package": "${roslaunch_package}",
+        "roslaunch_file": "${roslaunch_file}",
+        "rosbag_output_dir": "${rosbag_output_dir}",
+        "optitrack_rosbag_output_dir": "${optitrack_rosbag_output_dir}"
       }
     },
+
     {
-      "name": "start_camera",
-      "type": "command",
-      "on_failure": "abort",
-      "retries": 0,
-      "agent_id": "${camera_agent_id}",
-      "action": "start_recording",
-      "timeout_s": 10.0,
-      "params": { "format": "mp4" }
-    },
-    {
-      "name": "led_place_pucks",
-      "type": "command",
+      "name": "foraging-run-teardown",
+      "type": "template",
+      "when": "${run_teardown}",
       "on_failure": "continue",
-      "retries": 0,
-      "agent_id": "${led_agent_id}",
-      "component_id": "led_strip",
-      "action": "effect/glow",
-      "timeout_s": 10.0,
-      "params": { "color": { "r": 255, "g": 80, "b": 0 }, "wait_ms": 15 }
+      "template_id": "foraging-run-teardown",
+      "template_params": {
+        "robot_id": "${robot_id}",
+        "hydra_agent_id": "${hydra_agent_id}",
+        "launch_rosbot": "${launch_rosbot}",
+        "launch_hydra": "${launch_hydra}"
+      }
     },
+
     {
-      "name": "create_viz_topic_links",
-      "type": "parallel",
-      "on_failure": "abort",
-      "steps": [
-        {
-          "name": "link_puck_registry_viz",
-          "type": "topic_link",
-          "on_failure": "abort",
-          "retries": 0,
-          "operation": "create",
-          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/puck_registry",
-          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/puck_registry",
-          "select_clause": "payload.value as value",
-          "payload_template": "{\"value\": ${value}}",
-          "qos": 0
-        },
-        {
-          "name": "link_aruco_registry_viz",
-          "type": "topic_link",
-          "on_failure": "abort",
-          "retries": 0,
-          "operation": "create",
-          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_registry",
-          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/aruco_registry",
-          "select_clause": "payload.value as value",
-          "payload_template": "{\"value\": ${value}}",
-          "qos": 0
-        },
-        {
-          "name": "link_aruco_confirmed_viz",
-          "type": "topic_link",
-          "on_failure": "abort",
-          "retries": 0,
-          "operation": "create",
-          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_confirmed",
-          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/aruco_confirmed",
-          "select_clause": "payload.value.marker_id as marker_id, payload.value.x as x, payload.value.y as y",
-          "payload_template": "{\"marker_id\": ${marker_id}, \"x\": ${x}, \"y\": ${y}}",
-          "qos": 0
-        },
-        {
-          "name": "link_odom_robot_pose_viz",
-          "type": "topic_link",
-          "on_failure": "abort",
-          "retries": 0,
-          "operation": "create",
-          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/odom",
-          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/robot_pose",
-          "select_clause": "payload.value.pose.pose.position.x as px, payload.value.pose.pose.position.y as py, payload.value.pose.pose.orientation.x as ox, payload.value.pose.pose.orientation.y as oy, payload.value.pose.pose.orientation.z as oz, payload.value.pose.pose.orientation.w as ow",
-          "payload_template": "{\"value\": {\"pose\": {\"position\": {\"x\": ${px}, \"y\": ${py}}, \"orientation\": {\"x\": ${ox}, \"y\": ${oy}, \"z\": ${oz}, \"w\": ${ow}}}}}",
-          "qos": 0
-        },
-        {
-          "name": "link_optitrack_robot_pose_viz",
-          "type": "topic_link",
-          "on_failure": "abort",
-          "retries": 0,
-          "operation": "create",
-          "source_topic": "lucid/agents/${optitrack_agent_id}/components/ros_bridge/telemetry/natnet_ros_umh_6_pose",
-          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/robot_pose",
-          "select_clause": "payload.value.pose.position.x as px, payload.value.pose.position.y as py, payload.value.pose.orientation.x as ox, payload.value.pose.orientation.y as oy, payload.value.pose.orientation.z as oz, payload.value.pose.orientation.w as ow",
-          "payload_template": "{\"value\": {\"pose\": {\"position\": {\"x\": ${px}, \"y\": ${py}}, \"orientation\": {\"x\": ${ox}, \"y\": ${oy}, \"z\": ${oz}, \"w\": ${ow}}}}}",
-          "qos": 0
-        }
-      ]
-    },
-    {
-      "name": "approval_pucks_placed",
-      "type": "approval",
-      "on_failure": "abort",
-      "message": "Place pucks in their start positions, then approve to begin foraging.",
-      "timeout_s": 600.0
-    },
-    {
-      "name": "create_led_reactive_links",
-      "type": "parallel",
-      "on_failure": "abort",
-      "steps": [
-        {
-          "name": "link_perception_color",
-          "type": "topic_link",
-          "on_failure": "abort",
-          "retries": 0,
-          "operation": "create",
-          "source_topic": "lucid/agents/${robot_id}/components/perception/evt/color_detected",
-          "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",
-          "select_clause": "*",
-          "payload_template": "{\"request_id\": \"auto\", \"color\": {\"r\": ${payload.r}, \"g\": ${payload.g}, \"b\": ${payload.b}}}",
-          "qos": 0
-        },
-        {
-          "name": "link_puck_color_led",
-          "type": "topic_link",
-          "on_failure": "abort",
-          "retries": 0,
-          "operation": "create",
-          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/puck_confirmed",
-          "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",
-          "select_clause": "CASE payload.value.color WHEN 1 THEN 255 ELSE 0 END as r, CASE payload.value.color WHEN 2 THEN 255 ELSE 0 END as g, CASE payload.value.color WHEN 3 THEN 255 ELSE 0 END as b",
-          "payload_template": "{\"request_id\": \"auto\", \"color\": {\"r\": ${r}, \"g\": ${g}, \"b\": ${b}}}",
-          "qos": 0
-        },
-        {
-          "name": "link_aruco_color_led",
-          "type": "topic_link",
-          "on_failure": "abort",
-          "retries": 0,
-          "operation": "create",
-          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_confirmed",
-          "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",
-          "select_clause": "CASE payload.value.marker_id WHEN 1 THEN 255 ELSE 0 END as r, CASE payload.value.marker_id WHEN 2 THEN 255 ELSE 0 END as g, CASE payload.value.marker_id WHEN 3 THEN 255 ELSE 0 END as b",
-          "payload_template": "{\"request_id\": \"auto\", \"color\": {\"r\": ${r}, \"g\": ${g}, \"b\": ${b}}}",
-          "qos": 0
-        }
-      ]
-    },
-    {
-      "name": "start_foraging",
-      "type": "command",
-      "on_failure": "abort",
-      "retries": 0,
-      "agent_id": "${robot_id}",
-      "action": "start_foraging",
-      "timeout_s": 15.0,
-      "params": {}
-    },
-    {
-      "name": "wait_foraging_duration",
-      "type": "delay",
-      "on_failure": "abort",
-      "duration_s": "${duration_s}"
-    },
-    {
-      "name": "stop_foraging",
-      "type": "command",
+      "name": "foraging-reset-teardown",
+      "type": "template",
+      "when": "${run_teardown}",
       "on_failure": "continue",
-      "retries": 0,
-      "agent_id": "${robot_id}",
-      "action": "stop_foraging",
-      "timeout_s": 10.0,
-      "params": {}
+      "template_id": "foraging-reset-teardown",
+      "template_params": {
+        "robot_id": "${robot_id}",
+        "hydra_agent_id": "${hydra_agent_id}",
+        "launch_rosbot": "${launch_rosbot}",
+        "launch_hydra": "${launch_hydra}"
+      }
     },
+
     {
-      "name": "led_experiment_complete",
-      "type": "command",
+      "name": "foraging-setup-teardown",
+      "type": "template",
+      "when": "${run_teardown}",
       "on_failure": "continue",
-      "retries": 0,
-      "agent_id": "${led_agent_id}",
-      "component_id": "led_strip",
-      "action": "effect/rainbow",
-      "timeout_s": 10.0,
-      "params": { "wait_ms": 20 }
-    },
-    {
-      "name": "deactivate_all_topic_links",
-      "type": "parallel",
-      "on_failure": "continue",
-      "steps": [
-        { "name": "remove_perception_link",     "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/perception/evt/color_detected",                             "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",             "select_clause": "*", "qos": 0 },
-        { "name": "remove_puck_color_led",      "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/puck_confirmed",                       "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",             "select_clause": "*", "qos": 0 },
-        { "name": "remove_aruco_color_led",     "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_confirmed",                      "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",             "select_clause": "*", "qos": 0 },
-        { "name": "remove_puck_registry_viz",   "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/puck_registry",                       "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/puck_registry",   "select_clause": "*", "qos": 0 },
-        { "name": "remove_aruco_registry_viz",  "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_registry",                      "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/aruco_registry",  "select_clause": "*", "qos": 0 },
-        { "name": "remove_aruco_confirmed_viz", "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_confirmed",                      "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/aruco_confirmed", "select_clause": "*", "qos": 0 },
-        { "name": "remove_odom_robot_pose",     "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/odom",                                "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/robot_pose",      "select_clause": "*", "qos": 0 },
-        { "name": "remove_optitrack_robot_pose","type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${optitrack_agent_id}/components/ros_bridge/telemetry/natnet_ros_umh_6_pose",     "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/robot_pose",      "select_clause": "*", "qos": 0 }
-      ]
-    },
-    {
-      "name": "stop_recordings",
-      "type": "parallel",
-      "on_failure": "continue",
-      "steps": [
-        { "name": "stop_rosbag", "type": "command", "on_failure": "continue", "retries": 0, "agent_id": "${robot_id}",        "component_id": "ros_bridge", "action": "rosbag_stop",    "timeout_s": 10.0 },
-        { "name": "stop_camera", "type": "command", "on_failure": "continue", "retries": 0, "agent_id": "${camera_agent_id}", "action": "stop_recording",   "timeout_s": 10.0 }
-      ]
-    },
-    {
-      "name": "collect_results",
-      "type": "command",
-      "on_failure": "continue",
-      "retries": 0,
-      "agent_id": "${robot_id}",
-      "action": "get_recording_paths",
-      "timeout_s": 10.0,
-      "params": {}
+      "template_id": "foraging-setup-teardown",
+      "template_params": {
+        "robot_id": "${robot_id}",
+        "hydra_agent_id": "${hydra_agent_id}",
+        "camera_agent_id": "${camera_agent_id}",
+        "launch_rosbot": "${launch_rosbot}",
+        "launch_hydra": "${launch_hydra}",
+        "launch_camera": "${launch_camera}"
+      }
     }
   ]
 }

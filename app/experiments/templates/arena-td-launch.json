@@ -1,0 +1,47 @@
+{
+  "id": "arena-td-launch",
+  "name": "Arena TD Launch",
+  "version": "1.0.0",
+  "description": "Launches TouchDesigner and the Arena overlay on socrates, then dims room lights.",
+  "tags": ["setup", "arena", "touchdesigner"],
+  "parameters": {
+    "socrates_agent_id": { "type": "string", "default": "socrates", "required": true,  "description": "Agent ID running the viz component (TouchDesigner + Arena overlay)" },
+    "hydra_agent_id":    { "type": "string", "default": "hydra",    "required": true,  "description": "Agent ID for the Hydra node (hosts KNX lighting component)" },
+    "room_brightness":   { "type": "integer","default": 1,          "required": false, "description": "Room light brightness 0-100 (1 = dim for experiments)" }
+  },
+  "steps": [
+    {
+      "name": "start_touchdesigner",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 1,
+      "agent_id": "${socrates_agent_id}",
+      "component_id": "viz",
+      "action": "start_touchdesigner",
+      "timeout_s": 30,
+      "params": {}
+    },
+    {
+      "name": "start_arena",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 1,
+      "agent_id": "${socrates_agent_id}",
+      "component_id": "viz",
+      "action": "start_arena",
+      "timeout_s": 20,
+      "params": {}
+    },
+    {
+      "name": "set_room_lights",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 1,
+      "agent_id": "${hydra_agent_id}",
+      "component_id": "knx",
+      "action": "light/brightness/set",
+      "timeout_s": 10,
+      "params": { "light": "Experiments light", "brightness": "${room_brightness}" }
+    }
+  ]
+}
