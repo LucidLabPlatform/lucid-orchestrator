@@ -1,0 +1,82 @@
+{
+  "id": "foraging-viz-links",
+  "name": "Foraging Viz Links",
+  "version": "1.0.0",
+  "description": "Creates topic links that stream foraging data to the arena visualization: puck/aruco registries, robot odometry pose, and OptiTrack pose.",
+  "tags": ["foraging", "viz", "topic-links"],
+  "parameters": {
+    "robot_id":          { "type": "string", "default": "rosbot",    "required": true, "description": "Agent ID of the robot (ros_bridge component)" },
+    "optitrack_agent_id":{ "type": "string", "default": "hydra",     "required": true, "description": "Agent ID hosting the OptiTrack ROS bridge" },
+    "socrates_agent_id": { "type": "string", "default": "socrates",  "required": true, "description": "Agent ID running the viz component" }
+  },
+  "steps": [
+    {
+      "name": "create_viz_links",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "link_puck_registry_viz",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/puck_registry",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/puck_registry",
+          "select_clause": "payload.value as value",
+          "payload_template": "{\"value\": ${value}}",
+          "qos": 0
+        },
+        {
+          "name": "link_aruco_registry_viz",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_registry",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/aruco_registry",
+          "select_clause": "payload.value as value",
+          "payload_template": "{\"value\": ${value}}",
+          "qos": 0
+        },
+        {
+          "name": "link_aruco_confirmed_viz",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_confirmed",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/aruco_confirmed",
+          "select_clause": "payload.value.marker_id as marker_id, payload.value.x as x, payload.value.y as y",
+          "payload_template": "{\"marker_id\": ${marker_id}, \"x\": ${x}, \"y\": ${y}}",
+          "qos": 0
+        },
+        {
+          "name": "link_odom_robot_pose_viz",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/odom",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/robot_pose",
+          "select_clause": "payload.value.pose.pose.position.x as px, payload.value.pose.pose.position.y as py, payload.value.pose.pose.orientation.x as ox, payload.value.pose.pose.orientation.y as oy, payload.value.pose.pose.orientation.z as oz, payload.value.pose.pose.orientation.w as ow",
+          "payload_template": "{\"value\": {\"pose\": {\"position\": {\"x\": ${px}, \"y\": ${py}}, \"orientation\": {\"x\": ${ox}, \"y\": ${oy}, \"z\": ${oz}, \"w\": ${ow}}}}}",
+          "qos": 0
+        },
+        {
+          "name": "link_optitrack_robot_pose_viz",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${optitrack_agent_id}/components/ros_bridge/telemetry/natnet_ros_umh_6_pose",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/robot_pose",
+          "select_clause": "payload.value.pose.position.x as px, payload.value.pose.position.y as py, payload.value.pose.orientation.x as ox, payload.value.pose.orientation.y as oy, payload.value.pose.orientation.z as oz, payload.value.pose.orientation.w as ow",
+          "payload_template": "{\"value\": {\"pose\": {\"position\": {\"x\": ${px}, \"y\": ${py}}, \"orientation\": {\"x\": ${ox}, \"y\": ${oy}, \"z\": ${oz}, \"w\": ${ow}}}}}",
+          "qos": 0
+        }
+      ]
+    }
+  ]
+}

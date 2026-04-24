@@ -20,13 +20,25 @@
     "compose_file":                { "type": "string",  "default": "compose_farah.yaml",         "required": false, "description": "Docker compose file on ROSbot" },
     "roslaunch_package":           { "type": "string",  "default": "foraging_bringup",           "required": false, "description": "ROS package for foraging" },
     "roslaunch_file":              { "type": "string",  "default": "foraging_experiment.launch",  "required": false, "description": "Launch file for foraging" },
-    "rosbag_output_dir":           { "type": "string",  "default": "~/data/bags",                "required": false, "description": "Rosbag dir on robot" },
-    "optitrack_rosbag_output_dir": { "type": "string",  "default": "~/data/bags",                "required": false, "description": "Rosbag dir on OptiTrack agent" },
+    "rosbag_output_dir":           { "type": "string",  "default": "~/lucid-agent-core/data/bags",         "required": false, "description": "Rosbag dir on robot" },
+    "optitrack_rosbag_output_dir": { "type": "string",  "default": "~/lucid-agent-core/data/bags",         "required": false, "description": "Rosbag dir on OptiTrack agent" },
+    "camera_rosbag_output_dir":    { "type": "string",  "default": "~/lucid-agent-core-camera/data/bags",  "required": false, "description": "Rosbag dir on camera agent" },
     "bridge_settle_s":             { "type": "float",   "default": 5.0,                          "required": false, "description": "Seconds to wait after ros_bridge retry" }
   },
   "steps": [
     {
-      "name": "restart-rosbot-for-foraging",
+      "name": "kill-old-rosbot-docker",
+      "type": "command",
+      "when": "${launch_rosbot}",
+      "on_failure": "continue",
+      "agent_id": "${robot_id}",
+      "component_id": "exec",
+      "action": "kill",
+      "timeout_s": 15,
+      "params": { "name": "rosbot_docker" }
+    },
+    {
+      "name": "restart-rosbot-docker",
       "type": "command",
       "when": "${launch_rosbot}",
       "on_failure": "abort",
@@ -35,19 +47,39 @@
       "action": "spawn",
       "timeout_s": 15,
       "retries": 1,
-      "params": { "name": "rosbot_docker", "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${robot_host} 'docker compose -f ${compose_file} down && docker compose -f ${compose_file} up'" }
+      "params": { "name": "rosbot_docker", "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${robot_host} 'docker compose -f ${compose_file} up'" }
     },
 
     {
-      "name": "wait-for-rosbot-restart",
+      "name": "wait-for-docker-startup",
       "type": "delay",
       "when": "${launch_rosbot}",
       "on_failure": "abort",
-      "duration_s": 30.0
+      "duration_s": 15.0
     },
 
     {
-      "name": "connect-rosbot-ros-bridge",
+      "name": "start-rosserial",
+      "type": "command",
+      "when": "${launch_rosbot}",
+      "on_failure": "abort",
+      "agent_id": "${robot_id}",
+      "component_id": "exec",
+      "action": "spawn",
+      "timeout_s": 15,
+      "params": { "name": "rosserial", "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${robot_host} 'source /opt/ros/noetic/setup.bash && port=$(readlink -f /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0) && rosrun rosserial_python serial_node.py $port'" }
+    },
+
+    {
+      "name": "wait-for-rosserial",
+      "type": "delay",
+      "when": "${launch_rosbot}",
+      "on_failure": "abort",
+      "duration_s": 5.0
+    },
+
+    {
+      "name": "reset-rosbot-ros-bridge",
       "type": "command",
       "when": "${launch_rosbot}",
       "on_failure": "abort",
@@ -98,7 +130,7 @@
       "steps": [
         { "name": "start-rosbot-foraging-rosbag",    "type": "command", "when": "${launch_rosbot}", "on_failure": "continue", "agent_id": "${robot_id}",           "component_id": "ros_bridge", "action": "rosbag-start", "timeout_s": 15, "params": { "data": { "output_dir": "${rosbag_output_dir}",           "prefix": "foraging" } } },
         { "name": "start-optitrack-foraging-rosbag",  "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${optitrack_agent_id}", "component_id": "ros_bridge", "action": "rosbag-start", "timeout_s": 15, "params": { "data": { "output_dir": "${optitrack_rosbag_output_dir}", "prefix": "foraging" } } },
-        { "name": "start-camera-recording",           "type": "command", "when": "${launch_camera}", "on_failure": "continue", "agent_id": "${camera_agent_id}",    "component_id": "ros_bridge", "action": "rosbag-start", "timeout_s": 15, "params": { "data": { "output_dir": "${rosbag_output_dir}",           "prefix": "foraging" } } }
+        { "name": "start-camera-recording",           "type": "command", "when": "${launch_camera}", "on_failure": "continue", "agent_id": "${camera_agent_id}",    "component_id": "ros_bridge", "action": "rosbag-start", "timeout_s": 15, "params": { "data": { "output_dir": "${camera_rosbag_output_dir}",    "prefix": "foraging" } } }
       ]
     },
 
@@ -113,6 +145,18 @@
       "action": "roslaunch-start",
       "timeout_s": 30,
       "params": { "data": { "package": "${roslaunch_package}", "launch_file": "${roslaunch_file}" } }
+    },
+
+    {
+      "name": "wait-for-foraging-complete",
+      "type": "wait_for_condition",
+      "on_failure": "abort",
+      "agent_id": "${robot_id}",
+      "component_id": "ros_bridge",
+      "telemetry_metric": "foraging_status",
+      "condition": { "field": "value.data.state", "in": ["completed", "error"] },
+      "timeout_s": 1800,
+      "on_timeout": "continue"
     },
 
     { "name": "led-foraging-complete", "type": "command", "when": "${launch_led}", "on_failure": "continue", "agent_id": "${led_agent_id}", "component_id": "led_strip", "action": "effect/rainbow", "timeout_s": 10, "params": {} },

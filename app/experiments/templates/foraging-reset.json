@@ -11,14 +11,17 @@
     "led_agent_id":                { "type": "string",  "default": "led_truss",   "required": false, "description": "LED strip agent" },
     "launch_rosbot":               { "type": "boolean", "default": true,          "required": false, "description": "Enable rosbot telemetry and rosbag" },
     "launch_hydra":                { "type": "boolean", "default": true,          "required": false, "description": "Enable OptiTrack telemetry, topic link, and rosbag" },
+    "camera_agent_id":             { "type": "string",  "default": "camera",      "required": false, "description": "Camera agent" },
+    "launch_camera":               { "type": "boolean", "default": false,         "required": false, "description": "Record camera rosbag" },
     "launch_led":                  { "type": "boolean", "default": true,          "required": false, "description": "Show LED transitions" },
     "goal_x":                      { "type": "float",   "default": 2.987614393234253,  "required": false, "description": "Start X (OptiTrack frame)" },
     "goal_y":                      { "type": "float",   "default": 1.837099552154541,  "required": false, "description": "Start Y (OptiTrack frame)" },
     "goal_yaw":                    { "type": "float",   "default": -2.3711036734611257, "required": false, "description": "Start yaw (radians)" },
     "pos_tolerance":               { "type": "float",   "default": 0.10,          "required": false, "description": "Position tolerance (metres)" },
     "yaw_tolerance":               { "type": "float",   "default": 0.15,          "required": false, "description": "Yaw tolerance (radians)" },
-    "rosbag_output_dir":           { "type": "string",  "default": "~/data/bags", "required": false, "description": "Rosbag dir on robot" },
-    "optitrack_rosbag_output_dir": { "type": "string",  "default": "~/data/bags", "required": false, "description": "Rosbag dir on OptiTrack agent" }
+    "rosbag_output_dir":           { "type": "string",  "default": "~/lucid-agent-core/data/bags", "required": false, "description": "Rosbag dir on robot" },
+    "optitrack_rosbag_output_dir": { "type": "string",  "default": "~/lucid-agent-core/data/bags",        "required": false, "description": "Rosbag dir on OptiTrack agent" },
+    "camera_rosbag_output_dir":    { "type": "string",  "default": "~/lucid-agent-core-camera/data/bags", "required": false, "description": "Rosbag dir on camera agent" }
   },
   "steps": [
     {
@@ -50,7 +53,8 @@
       "on_failure": "continue",
       "steps": [
         { "name": "start-rosbot-reset-rosbag",    "type": "command", "when": "${launch_rosbot}", "on_failure": "continue", "agent_id": "${robot_id}",           "component_id": "ros_bridge", "action": "rosbag-start", "timeout_s": 15, "params": { "data": { "output_dir": "${rosbag_output_dir}",           "prefix": "reset" } } },
-        { "name": "start-optitrack-reset-rosbag",  "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${optitrack_agent_id}", "component_id": "ros_bridge", "action": "rosbag-start", "timeout_s": 15, "params": { "data": { "output_dir": "${optitrack_rosbag_output_dir}", "prefix": "reset" } } }
+        { "name": "start-optitrack-reset-rosbag",  "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${optitrack_agent_id}", "component_id": "ros_bridge", "action": "rosbag-start", "timeout_s": 15, "params": { "data": { "output_dir": "${optitrack_rosbag_output_dir}", "prefix": "reset" } } },
+        { "name": "start-camera-reset-rosbag",    "type": "command", "when": "${launch_camera}", "on_failure": "continue", "agent_id": "${camera_agent_id}",    "component_id": "ros_bridge", "action": "rosbag-start", "timeout_s": 15, "params": { "data": { "output_dir": "${camera_rosbag_output_dir}",    "prefix": "reset" } } }
       ]
     },
 
@@ -82,7 +86,8 @@
       "on_failure": "continue",
       "steps": [
         { "name": "stop-rosbot-reset-rosbag",   "type": "command", "when": "${launch_rosbot}", "on_failure": "continue", "agent_id": "${robot_id}",           "component_id": "ros_bridge", "action": "rosbag-stop", "timeout_s": 15, "params": {} },
-        { "name": "stop-optitrack-reset-rosbag", "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${optitrack_agent_id}", "component_id": "ros_bridge", "action": "rosbag-stop", "timeout_s": 15, "params": {} }
+        { "name": "stop-optitrack-reset-rosbag", "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${optitrack_agent_id}", "component_id": "ros_bridge", "action": "rosbag-stop", "timeout_s": 15, "params": {} },
+        { "name": "stop-camera-reset-rosbag",   "type": "command", "when": "${launch_camera}", "on_failure": "continue", "agent_id": "${camera_agent_id}",    "component_id": "ros_bridge", "action": "rosbag-stop", "timeout_s": 15, "params": {} }
       ]
     },
 

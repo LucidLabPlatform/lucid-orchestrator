@@ -1,0 +1,65 @@
+{
+  "id": "stop-recordings",
+  "name": "Stop Recordings",
+  "version": "1.2.0",
+  "description": "Stops rosbag on the robot, rosbag on the OptiTrack agent, and camera recording in parallel, then collects recording paths.",
+  "tags": ["recording", "ros"],
+  "parameters": {
+    "robot_id":           { "type": "string", "default": "rosbot", "required": true, "description": "Agent ID of the robot (ros_bridge component)" },
+    "optitrack_agent_id": { "type": "string", "default": "hydra",  "required": true, "description": "Agent ID hosting the OptiTrack ROS bridge" },
+    "camera_agent_id":    { "type": "string", "default": "",       "required": false, "description": "Camera agent — empty to skip" }
+  },
+  "steps": [
+    {
+      "name": "stop_recordings",
+      "type": "parallel",
+      "on_failure": "continue",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "stop_rosbag_robot",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${robot_id}",
+          "component_id": "ros_bridge",
+          "action": "rosbag-stop",
+          "timeout_s": 10,
+          "params": {}
+        },
+        {
+          "name": "stop_rosbag_optitrack",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${optitrack_agent_id}",
+          "component_id": "ros_bridge",
+          "action": "rosbag-stop",
+          "timeout_s": 10,
+          "params": {}
+        },
+        {
+          "name": "stop_camera",
+          "type": "command",
+          "when": "${camera_agent_id}",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${camera_agent_id}",
+          "action": "stop_recording",
+          "timeout_s": 10,
+          "params": {}
+        }
+      ]
+    },
+    {
+      "name": "collect_recording_paths",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${robot_id}",
+      "action": "get_recording_paths",
+      "timeout_s": 10,
+      "params": {}
+    }
+  ]
+}

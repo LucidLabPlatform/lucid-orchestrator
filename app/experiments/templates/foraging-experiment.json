@@ -24,8 +24,9 @@
     "goal_yaw":                    { "type": "float",   "default": -2.3711036734611257,               "required": false, "description": "Start yaw (radians)" },
     "pos_tolerance":               { "type": "float",   "default": 0.10,                              "required": false, "description": "Position tolerance (metres)" },
     "yaw_tolerance":               { "type": "float",   "default": 0.15,                              "required": false, "description": "Yaw tolerance (radians)" },
-    "rosbag_output_dir":           { "type": "string",  "default": "~/data/bags",                     "required": false, "description": "Rosbag dir on robot" },
-    "optitrack_rosbag_output_dir": { "type": "string",  "default": "~/data/bags",                     "required": false, "description": "Rosbag dir on OptiTrack agent" },
+    "rosbag_output_dir":           { "type": "string",  "default": "~/lucid-agent-core/data/bags",         "required": false, "description": "Rosbag dir on robot and OptiTrack" },
+    "optitrack_rosbag_output_dir": { "type": "string",  "default": "~/lucid-agent-core/data/bags",         "required": false, "description": "Rosbag dir on OptiTrack agent" },
+    "camera_rosbag_output_dir":    { "type": "string",  "default": "~/lucid-agent-core-camera/data/bags",  "required": false, "description": "Rosbag dir on camera agent" },
     "roslaunch_package":           { "type": "string",  "default": "foraging_bringup",                "required": false, "description": "ROS package for foraging" },
     "roslaunch_file":              { "type": "string",  "default": "foraging_experiment.launch",      "required": false, "description": "Launch file for foraging" },
     "run_setup":                   { "type": "boolean", "default": true,                              "required": false, "description": "Run setup phase" },
@@ -70,6 +71,9 @@
         "led_agent_id": "${led_agent_id}",
         "launch_rosbot": "${launch_rosbot}",
         "launch_hydra": "${launch_hydra}",
+        "launch_camera": "${launch_camera}",
+        "camera_agent_id": "${camera_agent_id}",
+        "camera_rosbag_output_dir": "${camera_rosbag_output_dir}",
         "launch_led": "${launch_led}",
         "goal_x": "${goal_x}",
         "goal_y": "${goal_y}",
@@ -116,7 +120,8 @@
         "roslaunch_package": "${roslaunch_package}",
         "roslaunch_file": "${roslaunch_file}",
         "rosbag_output_dir": "${rosbag_output_dir}",
-        "optitrack_rosbag_output_dir": "${optitrack_rosbag_output_dir}"
+        "optitrack_rosbag_output_dir": "${optitrack_rosbag_output_dir}",
+        "camera_rosbag_output_dir": "${camera_rosbag_output_dir}"
       }
     },
 

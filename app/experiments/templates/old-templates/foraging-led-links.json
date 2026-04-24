@@ -1,0 +1,71 @@
+{
+  "id": "foraging-led-links",
+  "name": "Foraging LED Links",
+  "version": "1.0.2",
+  "description": "Creates reactive topic links that drive the LED strip from foraging events: perception color, puck pickup, and ArUco corner scan.",
+  "tags": [
+    "foraging",
+    "led",
+    "topic-links"
+  ],
+  "parameters": {
+    "robot_id": {
+      "type": "string",
+      "default": "rosbot",
+      "required": true,
+      "description": "Agent ID of the robot (ros_bridge + perception components)"
+    },
+    "led_agent_id": {
+      "type": "string",
+      "default": "led_truss",
+      "required": true,
+      "description": "Agent ID hosting the LED strip component"
+    }
+  },
+  "steps": [
+    {
+      "name": "create_led_reactive_links",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "link_perception_color",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/perception/evt/color_detected",
+          "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",
+          "select_clause": "*",
+          "payload_template": "{\"color\": {\"r\": ${payload.r}, \"g\": ${payload.g}, \"b\": ${payload.b}}}",
+          "qos": 0
+        },
+        {
+          "name": "link_puck_color_led",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/puck_confirmed",
+          "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",
+          "select_clause": "CASE payload.value.color WHEN 1 THEN 255 ELSE 0 END as r, CASE payload.value.color WHEN 2 THEN 255 ELSE 0 END as g, CASE payload.value.color WHEN 3 THEN 255 ELSE 0 END as b",
+          "payload_template": "{\"color\": {\"r\": ${r}, \"g\": ${g}, \"b\": ${b}}}",
+          "qos": 0
+        },
+        {
+          "name": "link_aruco_color_led",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_confirmed",
+          "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",
+          "select_clause": "CASE payload.value.marker_id WHEN 1 THEN 255 ELSE 0 END as r, CASE payload.value.marker_id WHEN 2 THEN 255 ELSE 0 END as g, CASE payload.value.marker_id WHEN 3 THEN 255 ELSE 0 END as b",
+          "payload_template": "{\"color\": {\"r\": ${r}, \"g\": ${g}, \"b\": ${b}}}",
+          "qos": 0
+        }
+      ]
+    }
+  ]
+}

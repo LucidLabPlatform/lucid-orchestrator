@@ -1,0 +1,50 @@
+{
+  "id": "ping-agent",
+  "name": "Ping Agent",
+  "tags": [
+    "diagnostic"
+  ],
+  "steps": [
+    {
+      "qos": 0,
+      "name": "ping_agent",
+      "type": "command",
+      "steps": null,
+      "action": "ping",
+      "params": {},
+      "message": null,
+      "retries": 0,
+      "agent_id": "${agent_id}",
+      "condition": null,
+      "operation": "create",
+      "timeout_s": "${timeout_s}",
+      "duration_s": null,
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "template_id": null,
+      "component_id": null,
+      "source_topic": null,
+      "target_topic": null,
+      "select_clause": "*",
+      "template_params": {},
+      "payload_template": null,
+      "telemetry_metric": null
+    }
+  ],
+  "version": "1.0.0",
+  "parameters": {
+    "agent_id": {
+      "type": "string",
+      "default": null,
+      "required": true,
+      "description": "Agent ID to ping"
+    },
+    "timeout_s": {
+      "type": "float",
+      "default": 10.0,
+      "required": false,
+      "description": "Maximum seconds to wait for the ping response"
+    }
+  },
+  "description": "Sends a ping command to a single agent and verifies it responds.\n"
+}

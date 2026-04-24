@@ -1,0 +1,212 @@
+{
+  "id": "foraging-experiment",
+  "name": "Foraging Experiment",
+  "version": "2.2.0",
+  "description": "Full foraging experiment. Starts the arena, syncs time, resets the robot to start, restarts the ROS environment, starts recording and viz, waits for puck placement, runs foraging with live LED feedback, then stops cleanly. Run foraging-cleanup when all trials are done.",
+  "tags": ["foraging", "robotics", "experiment"],
+  "parameters": {
+    "robot_id":            { "type": "string",  "default": "rosbot",                          "required": true,  "description": "Agent ID of the robot (ros_bridge, exec, perception)" },
+    "optitrack_agent_id":  { "type": "string",  "default": "hydra",                           "required": true,  "description": "Agent ID hosting the OptiTrack ROS bridge" },
+    "led_agent_id":        { "type": "string",  "default": "led_truss",                       "required": true,  "description": "Agent ID hosting the LED strip component" },
+    "camera_agent_id":     { "type": "string",  "default": "camera",                          "required": true,  "description": "Agent ID hosting the camera recording component" },
+    "socrates_agent_id":   { "type": "string",  "default": "socrates",                        "required": true,  "description": "Agent ID running the viz component" },
+    "hydra_agent_id":      { "type": "string",  "default": "hydra",                           "required": true,  "description": "Agent ID for Hydra (KNX, chrony)" },
+    "south_agent_id":      { "type": "string",  "default": "south",                           "required": true,  "description": "Agent ID for the south projector" },
+    "north_agent_id":      { "type": "string",  "default": "north",                           "required": true,  "description": "Agent ID for the north projector" },
+    "east_agent_id":       { "type": "string",  "default": "east",                            "required": true,  "description": "Agent ID for the east projector" },
+    "west_agent_id":       { "type": "string",  "default": "west",                            "required": true,  "description": "Agent ID for the west projector" },
+    "ndi_source_south":    { "type": "string",  "default": "ROBOTICSS-MAC-PRO.LOCAL (south)", "required": false, "description": "NDI source name for south projector" },
+    "ndi_source_north":    { "type": "string",  "default": "ROBOTICSS-MAC-PRO.LOCAL (north)", "required": false, "description": "NDI source name for north projector" },
+    "ndi_source_east":     { "type": "string",  "default": "ROBOTICSS-MAC-PRO.LOCAL (east)",  "required": false, "description": "NDI source name for east projector" },
+    "ndi_source_west":     { "type": "string",  "default": "ROBOTICSS-MAC-PRO.LOCAL (west)",  "required": false, "description": "NDI source name for west projector" },
+    "room_brightness":     { "type": "integer", "default": 1,                                 "required": false, "description": "Room light brightness 0-100" },
+    "robot_host":          { "type": "string",  "default": "husarion@10.205.3.20",            "required": false, "description": "SSH target for the physical ROSbot" },
+    "compose_file":        { "type": "string",  "default": "compose_farah.yaml",              "required": false, "description": "Docker compose file on the ROSbot" },
+    "start_x":             { "type": "float",   "default": 2.987614393234253,                 "required": false, "description": "Robot start position X in OptiTrack frame (metres)" },
+    "start_y":             { "type": "float",   "default": 1.837099552154541,                 "required": false, "description": "Robot start position Y in OptiTrack frame (metres)" },
+    "start_yaw":           { "type": "float",   "default": -2.3711036734611257,               "required": false, "description": "Robot start orientation yaw (radians)" },
+    "pos_tolerance":       { "type": "float",   "default": 0.10,                              "required": false, "description": "Position tolerance for reset-to-start (metres)" },
+    "yaw_tolerance":       { "type": "float",   "default": 0.15,                              "required": false, "description": "Yaw tolerance for reset-to-start (radians)" },
+    "rosbag_output_dir":          { "type": "string",  "default": "/home/forfaly/bags", "required": false, "description": "Directory on the robot to write rosbag files" },
+    "optitrack_rosbag_output_dir":{ "type": "string",  "default": "/home/forfaly/bags", "required": false, "description": "Directory on the OptiTrack agent to write rosbag files" },
+    "roslaunch_package":   { "type": "string",  "default": "foraging_bringup",                "required": false, "description": "ROS package containing the foraging launch file" },
+    "roslaunch_file":      { "type": "string",  "default": "foraging_experiment.launch",      "required": false, "description": "Launch file for the foraging experiment" },
+    "ros_launch_timeout_s":{ "type": "float",   "default": 30.0,                              "required": false, "description": "Seconds to wait for ROS nodes to start" },
+    "trial_timeout_s":     { "type": "float",   "default": 900.0,                             "required": false, "description": "Safety timeout for the foraging phase (seconds)" }
+  },
+  "steps": [
+    {
+      "name": "arena_startup",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "arena-startup",
+      "template_params": {
+        "south_agent_id":    "${south_agent_id}",
+        "north_agent_id":    "${north_agent_id}",
+        "east_agent_id":     "${east_agent_id}",
+        "west_agent_id":     "${west_agent_id}",
+        "hydra_agent_id":    "${hydra_agent_id}",
+        "rosbot_agent_id":   "${robot_id}",
+        "socrates_agent_id": "${socrates_agent_id}",
+        "led_agent_id":      "${led_agent_id}",
+        "camera_agent_id":   "${camera_agent_id}",
+        "ndi_source_south":  "${ndi_source_south}",
+        "ndi_source_north":  "${ndi_source_north}",
+        "ndi_source_east":   "${ndi_source_east}",
+        "ndi_source_west":   "${ndi_source_west}",
+        "room_brightness":   "${room_brightness}"
+      }
+    },
+    {
+      "name": "chrony_sync",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "chrony-sync",
+      "template_params": {
+        "hydra_agent_id":  "${hydra_agent_id}",
+        "rosbot_agent_id": "${robot_id}"
+      }
+    },
+    {
+      "name": "reset_to_start",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "reset-to-start",
+      "template_params": {
+        "rosbot_agent_id": "${robot_id}",
+        "hydra_agent_id":  "${optitrack_agent_id}",
+        "led_agent_id":    "${led_agent_id}",
+        "start_x":         "${start_x}",
+        "start_y":         "${start_y}",
+        "start_yaw":       "${start_yaw}",
+        "pos_tolerance":   "${pos_tolerance}",
+        "yaw_tolerance":   "${yaw_tolerance}"
+      }
+    },
+    {
+      "name": "restart_ros_env",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "roslaunch-with-rosbot-master",
+      "template_params": {
+        "agent_id":          "${robot_id}",
+        "robot_host":        "${robot_host}",
+        "compose_file":      "${compose_file}",
+        "roslaunch_package": "${roslaunch_package}",
+        "roslaunch_file":    "${roslaunch_file}",
+        "ros_launch_timeout_s": "${ros_launch_timeout_s}"
+      }
+    },
+    {
+      "name": "start_recordings",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "start-recordings",
+      "template_params": {
+        "robot_id":                   "${robot_id}",
+        "optitrack_agent_id":         "${optitrack_agent_id}",
+        "camera_agent_id":            "${camera_agent_id}",
+        "rosbag_output_dir":          "${rosbag_output_dir}",
+        "optitrack_rosbag_output_dir":"${optitrack_rosbag_output_dir}"
+      }
+    },
+    {
+      "name": "setup_viz_links",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "foraging-viz-links",
+      "template_params": {
+        "robot_id":           "${robot_id}",
+        "optitrack_agent_id": "${optitrack_agent_id}",
+        "socrates_agent_id":  "${socrates_agent_id}"
+      }
+    },
+    {
+      "name": "led_waiting_for_pucks",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${led_agent_id}",
+      "component_id": "led_strip",
+      "action": "effect/theater-chase",
+      "timeout_s": 10,
+      "params": { "color": { "r": 255, "g": 180, "b": 80 }, "wait_ms": 80, "spacing": 5, "width": 2 }
+    },
+    {
+      "name": "approval_pucks_placed",
+      "type": "approval",
+      "on_failure": "abort",
+      "message": "Place pucks in their start positions, then approve to begin foraging.",
+      "timeout_s": 600
+    },
+    {
+      "name": "setup_led_reactive_links",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "foraging-led-links",
+      "template_params": {
+        "robot_id":     "${robot_id}",
+        "led_agent_id": "${led_agent_id}"
+      }
+    },
+    {
+      "name": "led_foraging_running",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${led_agent_id}",
+      "component_id": "led_strip",
+      "action": "effect/glow",
+      "timeout_s": 10,
+      "params": { "color": { "r": 150, "g": 0, "b": 200 }, "wait_ms": 15 }
+    },
+    {
+      "name": "start_foraging",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 0,
+      "agent_id": "${robot_id}",
+      "action": "start_foraging",
+      "timeout_s": 15,
+      "params": {}
+    },
+    {
+      "name": "wait_foraging_duration",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": "${trial_timeout_s}"
+    },
+    {
+      "name": "stop_foraging",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${robot_id}",
+      "action": "stop_foraging",
+      "timeout_s": 10,
+      "params": {}
+    },
+    {
+      "name": "led_experiment_complete",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${led_agent_id}",
+      "component_id": "led_strip",
+      "action": "effect/rainbow",
+      "timeout_s": 10,
+      "params": { "wait_ms": 20 }
+    },
+    {
+      "name": "stop_recordings",
+      "type": "template",
+      "on_failure": "continue",
+      "template_id": "stop-recordings",
+      "template_params": {
+        "robot_id":           "${robot_id}",
+        "optitrack_agent_id": "${optitrack_agent_id}",
+        "camera_agent_id":    "${camera_agent_id}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "id": "test-arena-viz-links",
+  "name": "Test Arena Viz Links",
+  "version": "1.0.0",
+  "description": "Test template: creates arena viz topic links, enables foraging telemetry on rosbot, and launches perception. Assumes ros_bridge and arena startup are already running.",
+  "tags": ["test", "arena", "viz", "topic-links"],
+  "parameters": {
+    "rosbot_agent_id":    { "type": "string", "default": "rosbot",   "required": true, "description": "Agent ID of the robot" },
+    "optitrack_agent_id": { "type": "string", "default": "hydra",    "required": true, "description": "Agent ID hosting the OptiTrack ROS bridge" },
+    "socrates_agent_id":  { "type": "string", "default": "socrates", "required": true, "description": "Agent ID running the viz component" }
+  },
+  "steps": [
+
+    {
+      "name": "create_arena_viz_links",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "link_puck_registry_viz",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${rosbot_agent_id}/components/ros_bridge/telemetry/puck_registry",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/puck_registry",
+          "select_clause": "payload.value as value",
+          "payload_template": "{\"value\": ${value}}",
+          "qos": 0
+        },
+        {
+          "name": "link_aruco_confirmed_viz",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${rosbot_agent_id}/components/ros_bridge/telemetry/aruco_confirmed",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/aruco_confirmed",
+          "select_clause": "payload.value.marker_id as marker_id, payload.value.x as x, payload.value.y as y",
+          "payload_template": "{\"marker_id\": ${marker_id}, \"x\": ${x}, \"y\": ${y}}",
+          "qos": 0
+        },
+        {
+          "name": "link_odom_robot_pose_viz",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${rosbot_agent_id}/components/ros_bridge/telemetry/odom",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/robot_pose_odom",
+          "select_clause": "payload.value.pose.pose.position.x as px, payload.value.pose.pose.position.y as py, payload.value.pose.pose.orientation.x as ox, payload.value.pose.pose.orientation.y as oy, payload.value.pose.pose.orientation.z as oz, payload.value.pose.pose.orientation.w as ow",
+          "payload_template": "{\"value\": {\"pose\": {\"position\": {\"x\": ${px}, \"y\": ${py}}, \"orientation\": {\"x\": ${ox}, \"y\": ${oy}, \"z\": ${oz}, \"w\": ${ow}}}}}",
+          "qos": 0
+        },
+        {
+          "name": "link_optitrack_robot_pose_viz",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${optitrack_agent_id}/components/ros_bridge/telemetry/natnet_ros_umh_6_pose",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/robot_pose_optitrack",
+          "select_clause": "payload.value.pose.position.x as px, payload.value.pose.position.y as py, payload.value.pose.position.z as pz, payload.value.pose.orientation.x as ox, payload.value.pose.orientation.y as oy, payload.value.pose.orientation.z as oz, payload.value.pose.orientation.w as ow",
+          "payload_template": "{\"value\": {\"pose\": {\"position\": {\"x\": ${px}, \"y\": ${py}, \"z\": ${pz}}, \"orientation\": {\"x\": ${ox}, \"y\": ${oy}, \"z\": ${oz}, \"w\": ${ow}}}}}",
+          "qos": 0
+        }
+      ]
+    },
+
+    {
+      "name": "enable_rosbot_telemetry",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 0,
+      "agent_id": "${rosbot_agent_id}",
+      "component_id": "ros_bridge",
+      "action": "cfg/telemetry/set",
+      "timeout_s": 10,
+      "params": {
+        "set": {
+          "puck_registry":   { "enabled": true, "interval_s": 0.2, "change_threshold_percent": 0.0 },
+          "aruco_confirmed": { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 },
+          "odom":            { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 },
+          "puck_confirmed":  { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 },
+          "foraging_status": { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 }
+        }
+      }
+    },
+
+    {
+      "name": "stop_roslaunch",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${rosbot_agent_id}",
+      "component_id": "ros_bridge",
+      "action": "roslaunch-stop",
+      "timeout_s": 30,
+      "params": {}
+    },
+
+    {
+      "name": "start_perception",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 0,
+      "agent_id": "${rosbot_agent_id}",
+      "component_id": "ros_bridge",
+      "action": "roslaunch-start",
+      "timeout_s": 30,
+      "params": {
+        "data": {
+          "package": "foraging_bringup",
+          "launch_file": "perception.launch"
+        }
+      }
+    }
+
+  ]
+}

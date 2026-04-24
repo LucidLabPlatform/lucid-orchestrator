@@ -1,0 +1,76 @@
+{
+  "id": "start-recordings",
+  "name": "Start Recordings",
+  "version": "1.3.0",
+  "description": "Starts rosbag recording on the robot, rosbag recording on the OptiTrack agent, and camera recording — all in parallel.",
+  "tags": ["recording", "ros"],
+  "parameters": {
+    "robot_id":                  { "type": "string", "default": "rosbot",              "required": true,  "description": "Agent ID of the robot (ros_bridge component)" },
+    "optitrack_agent_id":        { "type": "string", "default": "hydra",               "required": true,  "description": "Agent ID hosting the OptiTrack ROS bridge" },
+    "camera_agent_id":           { "type": "string", "default": "",                     "required": false, "description": "Camera agent — empty to skip" },
+    "rosbag_output_dir":         { "type": "string", "default": "~/data/bags",  "required": false, "description": "Directory on the robot to write rosbag files" },
+    "optitrack_rosbag_output_dir":{ "type": "string","default": "~/data/bags",  "required": false, "description": "Directory on the OptiTrack agent to write rosbag files" }
+  },
+  "steps": [
+    {
+      "name": "start_recordings",
+      "type": "parallel",
+      "on_failure": "continue",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "start_rosbag_robot",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${robot_id}",
+          "component_id": "ros_bridge",
+          "action": "rosbag-start",
+          "timeout_s": 10,
+          "params": {
+            "data": {
+              "output_dir": "${rosbag_output_dir}",
+              "topics": [
+                "/scan", "/odom", "/tf", "/tf_static", "/cmd_vel", "/map",
+                "/camera/color/image_2fps/compressed",
+                "/camera/depth/image_2fps/compressedDepth",
+                "/camera/depth/camera_info",
+                "/puck/detected/raw", "/puck/detected", "/puck/confirmed", "/puck/registry", "/puck/as_obstacles",
+                "/aruco/detected/raw", "/aruco/detected", "/aruco/confirmed", "/aruco/registry",
+                "/move_base/goal", "/move_base/status", "/move_base/result",
+                "/foraging/status", "/foraging/results"
+              ]
+            }
+          }
+        },
+        {
+          "name": "start_rosbag_optitrack",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${optitrack_agent_id}",
+          "component_id": "ros_bridge",
+          "action": "rosbag-start",
+          "timeout_s": 10,
+          "params": {
+            "data": {
+              "output_dir": "${optitrack_rosbag_output_dir}",
+              "topics": ["__all__"]
+            }
+          }
+        },
+        {
+          "name": "start_camera",
+          "type": "command",
+          "when": "${camera_agent_id}",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${camera_agent_id}",
+          "action": "start_recording",
+          "timeout_s": 10,
+          "params": { "format": "mp4" }
+        }
+      ]
+    }
+  ]
+}

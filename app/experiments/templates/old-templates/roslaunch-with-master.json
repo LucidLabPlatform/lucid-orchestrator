@@ -1,0 +1,56 @@
+{
+  "id": "roslaunch-with-master",
+  "name": "Roslaunch with Master",
+  "version": "1.2.0",
+  "description": "Spawns roscore via the exec component on the target agent, waits for it to initialize, then launches a ROS package via the ros_bridge component on the same agent.",
+  "tags": ["ros", "roscore", "roslaunch"],
+  "parameters": {
+    "agent_id":            { "type": "string", "default": null,                    "required": true,  "description": "Agent running both exec and ros_bridge components" },
+    "component_id":        { "type": "string", "default": "ros_bridge",            "required": false, "description": "Component ID of the ros_bridge-type component to use for roslaunch" },
+    "roslaunch_package":   { "type": "string", "default": "foraging_bringup",      "required": true,  "description": "ROS package containing the launch file" },
+    "roslaunch_file":      { "type": "string", "default": "navigation_stack.launch","required": true, "description": "Launch file to run" },
+    "roscore_settle_s":    { "type": "float",  "default": 5.0,                     "required": false, "description": "Seconds to wait after spawning roscore before launching" },
+    "ros_launch_timeout_s":{ "type": "float",  "default": 30.0,                    "required": false, "description": "Seconds to wait for ROS nodes to start" }
+  },
+  "steps": [
+    {
+      "name": "spawn_roscore",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${agent_id}",
+      "component_id": "exec",
+      "action": "spawn",
+      "timeout_s": 15,
+      "params": { "name": "roscore", "command": "source /opt/ros/noetic/setup.bash && roscore" }
+    },
+    {
+      "name": "roscore_settle",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": "${roscore_settle_s}"
+    },
+    {
+      "name": "reset_ros_bridge",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 1,
+      "agent_id": "${agent_id}",
+      "component_id": "${component_id}",
+      "action": "reset",
+      "timeout_s": 20,
+      "params": {}
+    },
+    {
+      "name": "roslaunch_start",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 2,
+      "agent_id": "${agent_id}",
+      "component_id": "${component_id}",
+      "action": "roslaunch-start",
+      "timeout_s": "${ros_launch_timeout_s}",
+      "params": { "data": { "package": "${roslaunch_package}", "launch_file": "${roslaunch_file}" } }
+    }
+  ]
+}

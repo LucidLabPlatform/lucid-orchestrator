@@ -1,0 +1,37 @@
+{
+  "id": "ping-agents",
+  "name": "Ping Agents",
+  "version": "1.1.0",
+  "description": "Pings selected agents in parallel. Set any agent ID to empty to skip it.",
+  "tags": ["diagnostic", "preflight"],
+  "parameters": {
+    "south_agent_id":   { "type": "string", "default": "south",     "required": false, "description": "South projector — empty to skip" },
+    "north_agent_id":   { "type": "string", "default": "north",     "required": false, "description": "North projector — empty to skip" },
+    "east_agent_id":    { "type": "string", "default": "east",      "required": false, "description": "East projector — empty to skip" },
+    "west_agent_id":    { "type": "string", "default": "west",      "required": false, "description": "West projector — empty to skip" },
+    "hydra_agent_id":   { "type": "string", "default": "hydra",     "required": false, "description": "Hydra — empty to skip" },
+    "rosbot_agent_id":  { "type": "string", "default": "rosbot",    "required": false, "description": "ROSbot — empty to skip" },
+    "socrates_agent_id":{ "type": "string", "default": "socrates",  "required": false, "description": "Socrates — empty to skip" },
+    "led_agent_id":     { "type": "string", "default": "led_truss", "required": false, "description": "LED strip — empty to skip" },
+    "camera_agent_id":  { "type": "string", "default": "",          "required": false, "description": "Camera — empty to skip" },
+    "timeout_s":        { "type": "float",  "default": 10.0,        "required": false, "description": "Timeout per ping" }
+  },
+  "steps": [
+    {
+      "name": "ping_all_agents",
+      "type": "parallel",
+      "on_failure": "continue",
+      "steps": [
+        { "name": "ping_south",    "type": "command", "when": "${south_agent_id}",    "on_failure": "continue", "agent_id": "${south_agent_id}",    "action": "ping", "timeout_s": "${timeout_s}", "params": {} },
+        { "name": "ping_north",    "type": "command", "when": "${north_agent_id}",    "on_failure": "continue", "agent_id": "${north_agent_id}",    "action": "ping", "timeout_s": "${timeout_s}", "params": {} },
+        { "name": "ping_east",     "type": "command", "when": "${east_agent_id}",     "on_failure": "continue", "agent_id": "${east_agent_id}",     "action": "ping", "timeout_s": "${timeout_s}", "params": {} },
+        { "name": "ping_west",     "type": "command", "when": "${west_agent_id}",     "on_failure": "continue", "agent_id": "${west_agent_id}",     "action": "ping", "timeout_s": "${timeout_s}", "params": {} },
+        { "name": "ping_hydra",    "type": "command", "when": "${hydra_agent_id}",    "on_failure": "continue", "agent_id": "${hydra_agent_id}",    "action": "ping", "timeout_s": "${timeout_s}", "params": {} },
+        { "name": "ping_rosbot",   "type": "command", "when": "${rosbot_agent_id}",   "on_failure": "continue", "agent_id": "${rosbot_agent_id}",   "action": "ping", "timeout_s": "${timeout_s}", "params": {} },
+        { "name": "ping_socrates", "type": "command", "when": "${socrates_agent_id}", "on_failure": "continue", "agent_id": "${socrates_agent_id}", "action": "ping", "timeout_s": "${timeout_s}", "params": {} },
+        { "name": "ping_led",      "type": "command", "when": "${led_agent_id}",      "on_failure": "continue", "agent_id": "${led_agent_id}",      "action": "ping", "timeout_s": "${timeout_s}", "params": {} },
+        { "name": "ping_camera",   "type": "command", "when": "${camera_agent_id}",   "on_failure": "continue", "agent_id": "${camera_agent_id}",   "action": "ping", "timeout_s": "${timeout_s}", "params": {} }
+      ]
+    }
+  ]
+}

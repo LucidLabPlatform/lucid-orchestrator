@@ -46,7 +46,7 @@
       "steps": [
         { "name": "start-roscore-hydra",  "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${hydra_agent_id}",  "component_id": "exec", "action": "spawn", "timeout_s": 15, "params": { "name": "roscore", "command": "source /opt/ros/noetic/setup.bash && roscore" } },
         { "name": "start-roscore-camera", "type": "command", "when": "${launch_camera}", "on_failure": "continue", "agent_id": "${camera_agent_id}", "component_id": "exec", "action": "spawn", "timeout_s": 15, "params": { "name": "roscore", "command": "source /opt/ros/noetic/setup.bash && roscore" } },
-        { "name": "start-rosbot-docker",  "type": "command", "when": "${launch_rosbot}", "on_failure": "abort",    "agent_id": "${robot_id}",        "component_id": "exec", "action": "spawn", "timeout_s": 15, "retries": 1, "params": { "name": "rosbot_docker", "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${robot_host} 'docker compose -f ${compose_file} down && docker compose -f ${compose_file} up'" } }
+        { "name": "start-rosbot-docker",  "type": "command", "when": "${launch_rosbot}", "on_failure": "abort",    "agent_id": "${robot_id}",        "component_id": "exec", "action": "spawn", "timeout_s": 15, "retries": 1, "params": { "name": "rosbot_docker", "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${robot_host} 'docker compose -f ${compose_file} up'" } }
       ]
     },
 

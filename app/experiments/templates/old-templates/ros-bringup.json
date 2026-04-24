@@ -1,0 +1,88 @@
+{
+  "id": "ros-bringup",
+  "name": "ROS Bringup",
+  "version": "1.0.0",
+  "description": "Starts roscore and/or rosbot docker, waits for settle, then retries ros_bridges. Set agent IDs to empty to skip. Set mode to rosserial for the post-reset docker restart with rosserial.",
+  "tags": ["setup", "ros"],
+  "parameters": {
+    "robot_id":         { "type": "string",  "default": "rosbot",              "required": true,  "description": "ROSbot agent ID" },
+    "hydra_agent_id":   { "type": "string",  "default": "hydra",              "required": false, "description": "Hydra agent — empty to skip roscore + ros_bridge" },
+    "camera_agent_id":  { "type": "string",  "default": "",                   "required": false, "description": "Camera agent — empty to skip roscore + ros_bridge" },
+    "launch_optitrack": { "type": "boolean", "default": true,                 "required": false, "description": "Whether hydra roscore and ros_bridge are needed" },
+    "robot_host":       { "type": "string",  "default": "husarion@10.205.3.20", "required": false, "description": "SSH target for ROSbot" },
+    "compose_file":     { "type": "string",  "default": "compose_farah.yaml", "required": false, "description": "Docker compose file on ROSbot" },
+    "mode":             { "type": "string",  "default": "standard",           "required": false, "description": "standard = docker up, rosserial = docker up -d + rosserial" },
+    "settle_s":         { "type": "float",   "default": 30.0,                 "required": false, "description": "Seconds to wait after ROS env starts" },
+    "bridge_settle_s":  { "type": "float",   "default": 5.0,                  "required": false, "description": "Seconds to wait after ros_bridge retry" }
+  },
+  "steps": [
+    {
+      "name": "bringup_ros_env",
+      "type": "parallel",
+      "on_failure": "abort",
+      "steps": [
+        {
+          "name": "start_roscore_hydra",
+          "type": "command",
+          "when": "${launch_optitrack}",
+          "on_failure": "continue",
+          "agent_id": "${hydra_agent_id}",
+          "component_id": "exec",
+          "action": "spawn",
+          "timeout_s": 15,
+          "params": { "name": "roscore", "command": "source /opt/ros/noetic/setup.bash && roscore" }
+        },
+        {
+          "name": "start_roscore_camera",
+          "type": "command",
+          "when": "${camera_agent_id}",
+          "on_failure": "continue",
+          "agent_id": "${camera_agent_id}",
+          "component_id": "exec",
+          "action": "spawn",
+          "timeout_s": 15,
+          "params": { "name": "roscore", "command": "source /opt/ros/noetic/setup.bash && roscore" }
+        },
+        {
+          "name": "restart_rosbot_docker",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 1,
+          "agent_id": "${robot_id}",
+          "component_id": "exec",
+          "action": "spawn",
+          "timeout_s": 15,
+          "params": {
+            "name": "rosbot_docker",
+            "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${robot_host} 'docker compose -f ${compose_file} down && docker compose -f ${compose_file} up'"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "ros_env_settle",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": "${settle_s}"
+    },
+
+    {
+      "name": "retry_ros_bridges",
+      "type": "parallel",
+      "on_failure": "abort",
+      "steps": [
+        { "name": "retry_hydra_ros_bridge",  "type": "command", "when": "${launch_optitrack}", "on_failure": "abort", "agent_id": "${hydra_agent_id}",  "component_id": "ros_bridge", "action": "retry", "timeout_s": 30, "params": { "force": true } },
+        { "name": "retry_rosbot_ros_bridge", "type": "command",                                "on_failure": "abort", "agent_id": "${robot_id}",        "component_id": "ros_bridge", "action": "retry", "timeout_s": 30, "params": { "force": true } },
+        { "name": "retry_camera_ros_bridge", "type": "command", "when": "${camera_agent_id}",  "on_failure": "abort", "agent_id": "${camera_agent_id}", "component_id": "ros_bridge", "action": "retry", "timeout_s": 30, "params": { "force": true } }
+      ]
+    },
+
+    {
+      "name": "ros_bridge_settle",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": "${bridge_settle_s}"
+    }
+  ]
+}

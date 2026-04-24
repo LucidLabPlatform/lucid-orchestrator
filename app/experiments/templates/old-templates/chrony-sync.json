@@ -1,0 +1,23 @@
+{
+  "id": "chrony-sync",
+  "name": "Chrony Sync",
+  "version": "1.1.0",
+  "description": "Starts chrony NTP sync on selected agents in parallel. Set any agent ID to empty to skip it.",
+  "tags": ["setup", "chrony"],
+  "parameters": {
+    "hydra_agent_id":  { "type": "string", "default": "hydra",  "required": false, "description": "Hydra agent — empty to skip" },
+    "rosbot_agent_id": { "type": "string", "default": "rosbot", "required": false, "description": "ROSbot agent — empty to skip" },
+    "timeout_s":       { "type": "float",  "default": 20.0,     "required": false, "description": "Timeout per agent" }
+  },
+  "steps": [
+    {
+      "name": "start_chrony_sync",
+      "type": "parallel",
+      "on_failure": "abort",
+      "steps": [
+        { "name": "chrony_hydra",  "type": "command", "when": "${hydra_agent_id}",  "on_failure": "abort", "agent_id": "${hydra_agent_id}",  "component_id": "chrony", "action": "start_sync", "timeout_s": "${timeout_s}", "params": {} },
+        { "name": "chrony_rosbot", "type": "command", "when": "${rosbot_agent_id}", "on_failure": "abort", "agent_id": "${rosbot_agent_id}", "component_id": "chrony", "action": "start_sync", "timeout_s": "${timeout_s}", "params": {} }
+      ]
+    }
+  ]
+}

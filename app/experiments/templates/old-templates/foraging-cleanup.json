@@ -1,0 +1,31 @@
+{
+  "id": "foraging-cleanup",
+  "name": "Foraging Cleanup",
+  "version": "1.0.0",
+  "description": "Deletes all foraging topic links (viz + LED reactive). Run this after all trials are done to clean up.",
+  "tags": ["foraging", "cleanup", "topic-links"],
+  "parameters": {
+    "robot_id":          { "type": "string", "default": "rosbot",   "required": true, "description": "Agent ID of the robot" },
+    "optitrack_agent_id":{ "type": "string", "default": "hydra",    "required": true, "description": "Agent ID hosting the OptiTrack ROS bridge" },
+    "led_agent_id":      { "type": "string", "default": "led_truss","required": true, "description": "Agent ID hosting the LED strip component" },
+    "socrates_agent_id": { "type": "string", "default": "socrates", "required": true, "description": "Agent ID running the viz component" }
+  },
+  "steps": [
+    {
+      "name": "remove_all_links",
+      "type": "parallel",
+      "on_failure": "continue",
+      "retries": 0,
+      "steps": [
+        { "name": "remove_puck_registry_viz",   "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/puck_registry",             "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/puck_registry",   "select_clause": "*", "qos": 0 },
+        { "name": "remove_aruco_registry_viz",  "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_registry",            "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/aruco_registry",  "select_clause": "*", "qos": 0 },
+        { "name": "remove_aruco_confirmed_viz", "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_confirmed",           "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/aruco_confirmed", "select_clause": "*", "qos": 0 },
+        { "name": "remove_odom_robot_pose",     "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/odom",                      "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/robot_pose",      "select_clause": "*", "qos": 0 },
+        { "name": "remove_optitrack_robot_pose","type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${optitrack_agent_id}/components/ros_bridge/telemetry/natnet_ros_umh_6_pose", "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/robot_pose", "select_clause": "*", "qos": 0 },
+        { "name": "remove_perception_link",     "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/perception/evt/color_detected",                  "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",            "select_clause": "*", "qos": 0 },
+        { "name": "remove_puck_color_led",      "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/puck_confirmed",             "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",            "select_clause": "*", "qos": 0 },
+        { "name": "remove_aruco_color_led",     "type": "topic_link", "on_failure": "continue", "retries": 0, "operation": "delete", "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_confirmed",            "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",            "select_clause": "*", "qos": 0 }
+      ]
+    }
+  ]
+}

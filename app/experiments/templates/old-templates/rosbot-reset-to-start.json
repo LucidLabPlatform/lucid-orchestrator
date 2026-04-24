@@ -1,0 +1,202 @@
+{
+  "id": "rosbot-reset-to-start",
+  "name": "ROSbot Reset to Start",
+  "version": "1.0.0",
+  "description": "Resets the ROSbot to its starting position using OptiTrack for localization. Streams OptiTrack pose from hydra to rosbot, launches the reset_to_start ROS node which iteratively navigates with move_base and correction, then verifies success via OptiTrack position error.",
+  "tags": [
+    "rosbot",
+    "navigation",
+    "optitrack"
+  ],
+  "parameters": {
+    "rosbot_agent_id": {
+      "type": "string",
+      "default": "rosbot",
+      "description": "Agent ID for the ROSbot",
+      "required": true
+    },
+    "hydra_agent_id": {
+      "type": "string",
+      "default": "hydra",
+      "description": "Agent ID for the Hydra node (hosts OptiTrack ROS bridge)",
+      "required": true
+    },
+    "start_x": {
+      "type": "float",
+      "default": "0.0",
+      "description": "Start position X in OptiTrack frame (metres)",
+      "required": false
+    },
+    "start_y": {
+      "type": "float",
+      "default": "0.0",
+      "description": "Start position Y in OptiTrack frame (metres)",
+      "required": false
+    },
+    "start_yaw": {
+      "type": "float",
+      "default": "0.0",
+      "description": "Start orientation yaw in OptiTrack frame (radians)",
+      "required": false
+    },
+    "pos_tolerance": {
+      "type": "float",
+      "default": "0.10",
+      "description": "Position tolerance in metres for declaring success",
+      "required": false
+    },
+    "yaw_tolerance": {
+      "type": "float",
+      "default": "0.15",
+      "description": "Yaw tolerance in radians for declaring success",
+      "required": false
+    }
+  },
+  "steps": [
+    {
+      "name": "preflight_ping",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "ping_rosbot",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 0,
+          "agent_id": "${rosbot_agent_id}",
+          "action": "ping",
+          "timeout_s": "10",
+          "params": {}
+        },
+        {
+          "name": "ping_hydra",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "action": "ping",
+          "timeout_s": "10",
+          "params": {}
+        }
+      ]
+    },
+    {
+      "name": "start_roscore_hydra",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${hydra_agent_id}",
+      "component_id": "exec",
+      "action": "spawn",
+      "timeout_s": "15",
+      "params": {
+        "name": "roscore",
+        "command": "source /opt/ros/noetic/setup.bash && roscore"
+      }
+    },
+    {
+      "name": "start_optitrack",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 1,
+      "agent_id": "${hydra_agent_id}",
+      "component_id": "ros_bridge",
+      "action": "roslaunch_start",
+      "timeout_s": "30",
+      "params": {
+        "data": {
+          "package": "optitrack_ros_communication",
+          "launch_file": "optitrack_nodes.launch",
+          "args": {
+            "serverIP": "10.205.3.3",
+            "namespace": "natnet_ros",
+            "clientIP": "10.205.10.254",
+            "serverType": "unicast"
+          }
+        }
+      }
+    },
+    {
+      "name": "link_optitrack_to_rosbot",
+      "type": "topic_link",
+      "on_failure": "abort",
+      "retries": 0,
+      "operation": "create",
+      "source_topic": "lucid/agents/${hydra_agent_id}/components/ros_bridge/telemetry/optitrack_umh_5",
+      "target_topic": "lucid/agents/${rosbot_agent_id}/components/ros_bridge/cmd/optitrack_pose",
+      "select_clause": "payload.value as value",
+      "payload_template": "{\"request_id\": \"auto\", \"data\": ${value}}",
+      "qos": 0
+    },
+    {
+      "name": "optitrack_settle",
+      "type": "delay",
+      "on_failure": "abort",
+      "retries": 0,
+      "duration_s": "3"
+    },
+    {
+      "name": "start_reset_to_start",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 0,
+      "agent_id": "${rosbot_agent_id}",
+      "component_id": "ros_bridge",
+      "action": "roslaunch_start",
+      "timeout_s": "30",
+      "params": {
+        "data": {
+          "package": "foraging_bringup",
+          "launch_file": "reset_to_start.launch",
+          "args": {
+            "start_x": "${start_x}",
+            "start_y": "${start_y}",
+            "start_yaw": "${start_yaw}",
+            "pos_tolerance": "${pos_tolerance}",
+            "yaw_tolerance": "${yaw_tolerance}"
+          }
+        }
+      }
+    },
+    {
+      "name": "wait_for_reset_success",
+      "type": "wait_for_condition",
+      "on_failure": "abort",
+      "retries": 0,
+      "agent_id": "${rosbot_agent_id}",
+      "component_id": "ros_bridge",
+      "telemetry_metric": "reset_status",
+      "condition": {
+        "field": "value.data.state",
+        "equals": "success"
+      },
+      "timeout_s": "120"
+    },
+    {
+      "name": "verify_position_error",
+      "type": "wait_for_condition",
+      "on_failure": "abort",
+      "retries": 0,
+      "agent_id": "${rosbot_agent_id}",
+      "component_id": "ros_bridge",
+      "telemetry_metric": "reset_status",
+      "condition": {
+        "field": "value.data.pos_error",
+        "less_than": "${pos_tolerance}"
+      },
+      "timeout_s": "5"
+    },
+    {
+      "name": "cleanup_optitrack_link",
+      "type": "topic_link",
+      "on_failure": "continue",
+      "retries": 0,
+      "operation": "delete",
+      "source_topic": "lucid/agents/${hydra_agent_id}/components/ros_bridge/telemetry/optitrack_umh_5",
+      "target_topic": "lucid/agents/${rosbot_agent_id}/components/ros_bridge/cmd/optitrack_pose",
+      "select_clause": "*",
+      "qos": 0
+    }
+  ]
+}

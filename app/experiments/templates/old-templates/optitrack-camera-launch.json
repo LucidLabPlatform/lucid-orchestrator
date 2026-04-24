@@ -1,0 +1,55 @@
+{
+  "id": "optitrack-camera-launch",
+  "name": "OptiTrack + Camera Launch",
+  "version": "1.1.0",
+  "description": "Launches OptiTrack ROS nodes on the hydra agent and the overhead camera ROS nodes on the camera agent — each with its own roscore — in parallel.",
+  "tags": ["ros", "optitrack", "camera"],
+  "parameters": {
+    "hydra_agent_id":       { "type": "string", "default": "hydra",                          "required": true,  "description": "Agent ID for the OptiTrack ROS bridge (hydra)" },
+    "camera_agent_id":      { "type": "string", "default": "camera",                         "required": true,  "description": "Agent ID for the camera ROS bridge" },
+    "optitrack_package":    { "type": "string", "default": "optitrack_ros_communication",    "required": false, "description": "ROS package for OptiTrack" },
+    "optitrack_launch":     { "type": "string", "default": "optitrack_nodes.launch",         "required": false, "description": "Launch file for OptiTrack" },
+    "camera_package":       { "type": "string", "default": "remote_lab",                     "required": false, "description": "ROS package for the overhead camera" },
+    "camera_launch":        { "type": "string", "default": "start_camera.launch",            "required": false, "description": "Launch file for the overhead camera" },
+    "roscore_settle_s":     { "type": "float",  "default": 5.0,                              "required": false, "description": "Seconds to wait after spawning roscore before launching" },
+    "ros_launch_timeout_s": { "type": "float",  "default": 30.0,                             "required": false, "description": "Seconds to wait for ROS nodes to start" }
+  },
+  "steps": [
+    {
+      "name": "launch_all",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "launch_optitrack",
+          "type": "template",
+          "on_failure": "abort",
+          "template_id": "roslaunch-with-master",
+          "template_params": {
+            "agent_id":            "${hydra_agent_id}",
+            "component_id":        "ros_bridge",
+            "roslaunch_package":   "${optitrack_package}",
+            "roslaunch_file":      "${optitrack_launch}",
+            "roscore_settle_s":    "${roscore_settle_s}",
+            "ros_launch_timeout_s":"${ros_launch_timeout_s}"
+          }
+        },
+        {
+          "name": "launch_camera",
+          "type": "template",
+          "on_failure": "abort",
+          "template_id": "roslaunch-with-master",
+          "template_params": {
+            "agent_id":            "${camera_agent_id}",
+            "component_id":        "ros_bridge",
+            "roslaunch_package":   "${camera_package}",
+            "roslaunch_file":      "${camera_launch}",
+            "roscore_settle_s":    "${roscore_settle_s}",
+            "ros_launch_timeout_s":"${ros_launch_timeout_s}"
+          }
+        }
+      ]
+    }
+  ]
+}

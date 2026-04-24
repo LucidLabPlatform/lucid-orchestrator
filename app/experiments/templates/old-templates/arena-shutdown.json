@@ -1,0 +1,286 @@
+{
+  "id": "arena-shutdown",
+  "name": "Arena Shutdown",
+  "version": "1.0.0",
+  "description": "Stops the arena overlay and TouchDesigner, stops NDI streams, powers off all four projectors, stops roscore and chrony, turns off LEDs, and restores room lights. Run this to tear down the arena.",
+  "tags": [
+    "teardown",
+    "arena"
+  ],
+  "parameters": {
+    "led_agent_id": {
+      "type": "string",
+      "default": "led_truss",
+      "description": "Agent ID hosting the LED strip component",
+      "required": true
+    },
+    "east_agent_id": {
+      "type": "string",
+      "default": "east",
+      "description": "Agent ID for the east projector node",
+      "required": true
+    },
+    "west_agent_id": {
+      "type": "string",
+      "default": "west",
+      "description": "Agent ID for the west projector node",
+      "required": true
+    },
+    "hydra_agent_id": {
+      "type": "string",
+      "default": "hydra",
+      "description": "Agent ID for the Hydra node (hosts KNX component)",
+      "required": true
+    },
+    "north_agent_id": {
+      "type": "string",
+      "default": "north",
+      "description": "Agent ID for the north projector node",
+      "required": true
+    },
+    "south_agent_id": {
+      "type": "string",
+      "default": "south",
+      "description": "Agent ID for the south projector node",
+      "required": true
+    },
+    "rosbot_agent_id": {
+      "type": "string",
+      "default": "rosbot",
+      "description": "Agent ID for the ROSbot",
+      "required": true
+    },
+    "camera_agent_id": {
+      "type": "string",
+      "default": "camera",
+      "description": "Agent ID hosting the camera recording component",
+      "required": true
+    },
+    "socrates_agent_id": {
+      "type": "string",
+      "default": "socrates",
+      "description": "Agent ID running the viz component (arena + TouchDesigner)",
+      "required": true
+    }
+  },
+  "steps": [
+    {
+      "name": "stop_arena",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${socrates_agent_id}",
+      "component_id": "viz",
+      "action": "stop_arena",
+      "timeout_s": "20",
+      "params": {}
+    },
+    {
+      "name": "stop_touchdesigner",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${socrates_agent_id}",
+      "component_id": "viz",
+      "action": "stop_touchdesigner",
+      "timeout_s": "20",
+      "params": {}
+    },
+    {
+      "name": "stop_ndi_streams",
+      "type": "parallel",
+      "on_failure": "continue",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "ndi_stop_east",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${east_agent_id}",
+          "component_id": "ndi",
+          "action": "receive/stop",
+          "timeout_s": "15",
+          "params": {}
+        },
+        {
+          "name": "ndi_stop_west",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${west_agent_id}",
+          "component_id": "ndi",
+          "action": "receive/stop",
+          "timeout_s": "15",
+          "params": {}
+        },
+        {
+          "name": "ndi_stop_north",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${north_agent_id}",
+          "component_id": "ndi",
+          "action": "receive/stop",
+          "timeout_s": "15",
+          "params": {}
+        },
+        {
+          "name": "ndi_stop_south",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${south_agent_id}",
+          "component_id": "ndi",
+          "action": "receive/stop",
+          "timeout_s": "15",
+          "params": {}
+        }
+      ]
+    },
+    {
+      "name": "power_off_projectors",
+      "type": "parallel",
+      "on_failure": "continue",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "power_off_south",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${south_agent_id}",
+          "component_id": "projector",
+          "action": "power/off",
+          "timeout_s": "30",
+          "params": {}
+        },
+        {
+          "name": "power_off_north",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${north_agent_id}",
+          "component_id": "projector",
+          "action": "power/off",
+          "timeout_s": "30",
+          "params": {}
+        },
+        {
+          "name": "power_off_east",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${east_agent_id}",
+          "component_id": "projector",
+          "action": "power/off",
+          "timeout_s": "30",
+          "params": {}
+        },
+        {
+          "name": "power_off_west",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${west_agent_id}",
+          "component_id": "projector",
+          "action": "power/off",
+          "timeout_s": "30",
+          "params": {}
+        }
+      ]
+    },
+    {
+      "name": "stop_roscore_and_chrony",
+      "type": "parallel",
+      "on_failure": "continue",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "kill_roscore_hydra",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "component_id": "exec",
+          "action": "kill",
+          "timeout_s": "15",
+          "params": {
+            "name": "roscore"
+          }
+        },
+        {
+          "name": "kill_roscore_camera",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${camera_agent_id}",
+          "component_id": "exec",
+          "action": "kill",
+          "timeout_s": "15",
+          "params": {
+            "name": "roscore"
+          }
+        },
+        {
+          "name": "chrony_stop_hydra",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "component_id": "chrony",
+          "action": "stop_sync",
+          "timeout_s": "15",
+          "params": {}
+        },
+        {
+          "name": "chrony_stop_rosbot",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${rosbot_agent_id}",
+          "component_id": "chrony",
+          "action": "stop_sync",
+          "timeout_s": "15",
+          "params": {}
+        },
+        {
+          "name": "chrony_stop_camera",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${camera_agent_id}",
+          "component_id": "chrony",
+          "action": "stop_sync",
+          "timeout_s": "15",
+          "params": {}
+        }
+      ]
+    },
+    {
+      "name": "led_clear",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${led_agent_id}",
+      "component_id": "led_strip",
+      "action": "clear",
+      "timeout_s": "10",
+      "params": {}
+    },
+    {
+      "name": "restore_room_lights",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 1,
+      "agent_id": "${hydra_agent_id}",
+      "component_id": "knx",
+      "action": "light/brightness/set",
+      "timeout_s": "10",
+      "params": {
+        "light": "Experiments Light",
+        "brightness": 255
+      }
+    }
+  ]
+}

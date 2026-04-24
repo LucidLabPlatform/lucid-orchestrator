@@ -1,0 +1,438 @@
+{
+  "id": "foraging-experiment-no-optitrack",
+  "name": "Foraging Experiment (OptiTrack pre-running)",
+  "version": "1.5.0",
+  "description": "Full foraging experiment. Same as foraging-experiment but skips launching OptiTrack and skips restarting hydra roscore — assumes both are already running. Use when continuing from a previous session.",
+  "tags": ["foraging", "robotics", "experiment"],
+  "parameters": {
+    "robot_id":                    { "type": "string",  "default": "rosbot",                          "required": true,  "description": "Agent ID of the robot" },
+    "rosbot_agent_id":             { "type": "string",  "default": "rosbot",                          "required": true,  "description": "Agent ID of the robot (alias used by sub-templates)" },
+    "hydra_agent_id":              { "type": "string",  "default": "hydra",                           "required": true,  "description": "Agent ID for Hydra (OptiTrack, KNX, chrony)" },
+    "optitrack_agent_id":          { "type": "string",  "default": "hydra",                           "required": true,  "description": "Agent ID hosting the OptiTrack ROS bridge (for recordings)" },
+    "led_agent_id":                { "type": "string",  "default": "led_truss",                       "required": true,  "description": "Agent ID hosting the LED strip" },
+    "camera_agent_id":             { "type": "string",  "default": "camera",                          "required": true,  "description": "Agent ID for the overhead camera" },
+    "socrates_agent_id":           { "type": "string",  "default": "socrates",                        "required": true,  "description": "Agent ID running the viz component" },
+    "south_agent_id":              { "type": "string",  "default": "south",                           "required": true,  "description": "Agent ID for the south projector" },
+    "north_agent_id":              { "type": "string",  "default": "north",                           "required": true,  "description": "Agent ID for the north projector" },
+    "east_agent_id":               { "type": "string",  "default": "east",                            "required": true,  "description": "Agent ID for the east projector" },
+    "west_agent_id":               { "type": "string",  "default": "west",                            "required": true,  "description": "Agent ID for the west projector" },
+    "ndi_source_south":            { "type": "string",  "default": "ROBOTICSS-MAC-PRO.LOCAL (south)", "required": false, "description": "NDI source name for south projector" },
+    "ndi_source_north":            { "type": "string",  "default": "ROBOTICSS-MAC-PRO.LOCAL (north)", "required": false, "description": "NDI source name for north projector" },
+    "ndi_source_east":             { "type": "string",  "default": "ROBOTICSS-MAC-PRO.LOCAL (east)",  "required": false, "description": "NDI source name for east projector" },
+    "ndi_source_west":             { "type": "string",  "default": "ROBOTICSS-MAC-PRO.LOCAL (west)",  "required": false, "description": "NDI source name for west projector" },
+    "room_brightness":             { "type": "integer", "default": 1,                                 "required": false, "description": "Room light brightness 0-100" },
+    "robot_host":                  { "type": "string",  "default": "husarion@10.205.3.20",            "required": false, "description": "SSH target for the physical ROSbot" },
+    "compose_file":                { "type": "string",  "default": "compose_farah.yaml",              "required": false, "description": "Docker compose file on the ROSbot" },
+    "goal_x":                      { "type": "float",   "default": 2.987614393234253,                 "required": false, "description": "Start position X in OptiTrack frame (metres)" },
+    "goal_y":                      { "type": "float",   "default": 1.837099552154541,                 "required": false, "description": "Start position Y in OptiTrack frame (metres)" },
+    "goal_yaw":                    { "type": "float",   "default": -2.3711036734611257,               "required": false, "description": "Start orientation yaw in OptiTrack frame (radians)" },
+    "pos_tolerance":               { "type": "float",   "default": 0.10,                              "required": false, "description": "Position tolerance for reset-to-start (metres)" },
+    "yaw_tolerance":               { "type": "float",   "default": 0.15,                              "required": false, "description": "Yaw tolerance for reset-to-start (radians)" },
+    "rosbag_output_dir":           { "type": "string",  "default": "~/data/bags",                     "required": false, "description": "Directory on the robot to write rosbag files" },
+    "optitrack_rosbag_output_dir": { "type": "string",  "default": "~/data/bags",                     "required": false, "description": "Directory on the OptiTrack agent to write rosbag files" },
+    "roslaunch_package":           { "type": "string",  "default": "foraging_bringup",                "required": false, "description": "ROS package containing the foraging launch file" },
+    "roslaunch_file":              { "type": "string",  "default": "foraging_experiment.launch",      "required": false, "description": "Launch file for the foraging experiment" },
+    "trial_timeout_s":             { "type": "float",   "default": 900.0,                             "required": false, "description": "Safety timeout for the foraging phase (seconds)" }
+  },
+  "steps": [
+
+    {
+      "name": "arena_startup",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "arena-startup",
+      "template_params": {
+        "south_agent_id":    "${south_agent_id}",
+        "north_agent_id":    "${north_agent_id}",
+        "east_agent_id":     "${east_agent_id}",
+        "west_agent_id":     "${west_agent_id}",
+        "hydra_agent_id":    "${hydra_agent_id}",
+        "rosbot_agent_id":   "${rosbot_agent_id}",
+        "socrates_agent_id": "${socrates_agent_id}",
+        "led_agent_id":      "${led_agent_id}",
+        "camera_agent_id":   "${camera_agent_id}",
+        "ndi_source_south":  "${ndi_source_south}",
+        "ndi_source_north":  "${ndi_source_north}",
+        "ndi_source_east":   "${ndi_source_east}",
+        "ndi_source_west":   "${ndi_source_west}",
+        "room_brightness":   "${room_brightness}"
+      }
+    },
+
+    {
+      "name": "chrony_sync",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        { "name": "chrony_hydra",   "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${hydra_agent_id}",   "component_id": "chrony", "action": "start_sync", "timeout_s": 20, "params": {} },
+        { "name": "chrony_rosbot",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${rosbot_agent_id}",  "component_id": "chrony", "action": "start_sync", "timeout_s": 20, "params": {} }
+      ]
+    },
+
+    {
+      "name": "bringup_ros_env",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "start_roscore_camera",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${camera_agent_id}",
+          "component_id": "exec",
+          "action": "spawn",
+          "timeout_s": 15,
+          "params": { "name": "roscore", "command": "source /opt/ros/noetic/setup.bash && roscore" }
+        },
+        {
+          "name": "restart_rosbot_docker",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 1,
+          "agent_id": "${rosbot_agent_id}",
+          "component_id": "exec",
+          "action": "spawn",
+          "timeout_s": 15,
+          "params": {
+            "name": "rosbot_docker",
+            "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${robot_host} 'docker compose -f ${compose_file} down && docker compose -f ${compose_file} up'"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "ros_env_settle",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": 30
+    },
+
+    {
+      "name": "retry_ros_bridges",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        { "name": "retry_rosbot_ros_bridge", "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${rosbot_agent_id}", "component_id": "ros_bridge", "action": "retry", "timeout_s": 30, "params": { "force": true } },
+        { "name": "retry_camera_ros_bridge", "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${camera_agent_id}", "component_id": "ros_bridge", "action": "retry", "timeout_s": 30, "params": { "force": true } }
+      ]
+    },
+
+    {
+      "name": "ros_bridge_settle",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": 5
+    },
+
+    {
+      "name": "enable_telemetry_reset",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "enable_hydra_optitrack_telemetry",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "component_id": "ros_bridge",
+          "action": "cfg/telemetry/set",
+          "timeout_s": 10,
+          "params": {
+            "set": {
+              "optitrack_umh_5":        { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 },
+              "natnet_ros_umh_6_pose":  { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 }
+            }
+          }
+        },
+        {
+          "name": "enable_rosbot_reset_telemetry",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 0,
+          "agent_id": "${rosbot_agent_id}",
+          "component_id": "ros_bridge",
+          "action": "cfg/telemetry/set",
+          "timeout_s": 10,
+          "params": {
+            "set": {
+              "reset_status": { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 }
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "create_all_topic_links",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "link_optitrack_to_rosbot",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${hydra_agent_id}/components/ros_bridge/telemetry/optitrack_umh_5",
+          "target_topic": "lucid/agents/${rosbot_agent_id}/components/ros_bridge/cmd/optitrack_pose",
+          "select_clause": "payload.value as value",
+          "payload_template": "{\"data\": ${value}}",
+          "qos": 0
+        },
+        {
+          "name": "link_puck_registry_viz",
+          "type": "topic_link",
+          "on_failure": "continue",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/puck_registry",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/puck_registry",
+          "select_clause": "payload.value as value",
+          "payload_template": "{\"value\": ${value}}",
+          "qos": 0
+        },
+        {
+          "name": "link_aruco_confirmed_viz",
+          "type": "topic_link",
+          "on_failure": "continue",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_confirmed",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/aruco_confirmed",
+          "select_clause": "payload.value.marker_id as marker_id, payload.value.x as x, payload.value.y as y",
+          "payload_template": "{\"marker_id\": ${marker_id}, \"x\": ${x}, \"y\": ${y}}",
+          "qos": 0
+        },
+        {
+          "name": "link_odom_robot_pose_viz",
+          "type": "topic_link",
+          "on_failure": "continue",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/odom",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/robot_pose_odom",
+          "select_clause": "payload.value.pose.pose.position.x as px, payload.value.pose.pose.position.y as py, payload.value.pose.pose.orientation.x as ox, payload.value.pose.pose.orientation.y as oy, payload.value.pose.pose.orientation.z as oz, payload.value.pose.pose.orientation.w as ow",
+          "payload_template": "{\"value\": {\"pose\": {\"position\": {\"x\": ${px}, \"y\": ${py}}, \"orientation\": {\"x\": ${ox}, \"y\": ${oy}, \"z\": ${oz}, \"w\": ${ow}}}}}",
+          "qos": 0
+        },
+        {
+          "name": "link_optitrack_robot_pose_viz",
+          "type": "topic_link",
+          "on_failure": "continue",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${optitrack_agent_id}/components/ros_bridge/telemetry/natnet_ros_umh_6_pose",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/telemetry/robot_pose_optitrack",
+          "select_clause": "payload.value.pose.position.x as px, payload.value.pose.position.y as py, payload.value.pose.position.z as pz, payload.value.pose.orientation.x as ox, payload.value.pose.orientation.y as oy, payload.value.pose.orientation.z as oz, payload.value.pose.orientation.w as ow",
+          "payload_template": "{\"value\": {\"pose\": {\"position\": {\"x\": ${px}, \"y\": ${py}, \"z\": ${pz}}, \"orientation\": {\"x\": ${ox}, \"y\": ${oy}, \"z\": ${oz}, \"w\": ${ow}}}}}",
+          "qos": 0
+        }
+      ]
+    },
+
+    {
+      "name": "start_reset_to_start",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 0,
+      "agent_id": "${rosbot_agent_id}",
+      "component_id": "ros_bridge",
+      "action": "roslaunch-start",
+      "timeout_s": 30,
+      "params": {
+        "data": {
+          "package": "foraging_bringup",
+          "launch_file": "reset_to_start.launch",
+          "args": {
+            "goal_x":        "${goal_x}",
+            "goal_y":        "${goal_y}",
+            "goal_yaw":      "${goal_yaw}",
+            "pos_tolerance": "${pos_tolerance}",
+            "yaw_tolerance": "${yaw_tolerance}"
+          }
+        }
+      }
+    },
+
+    {
+      "name": "wait_for_reset_success",
+      "type": "wait_for_condition",
+      "on_failure": "abort",
+      "retries": 0,
+      "agent_id": "${rosbot_agent_id}",
+      "component_id": "ros_bridge",
+      "telemetry_metric": "reset_status",
+      "condition": { "field": "value.state", "equals": "success" },
+      "timeout_s": 180
+    },
+
+    {
+      "name": "restart_rosbot_docker_rosserial",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 1,
+      "agent_id": "${rosbot_agent_id}",
+      "component_id": "exec",
+      "action": "spawn",
+      "timeout_s": 15,
+      "params": {
+        "name": "rosbot_docker_rosserial",
+        "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${robot_host} 'docker compose -f ${compose_file} down && docker compose -f ${compose_file} up -d && sleep 15 && port=$(readlink -f /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0) && rosrun rosserial_python serial_node.py $port &'"
+      }
+    },
+
+    {
+      "name": "ros_env_settle_foraging",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": 30
+    },
+
+    {
+      "name": "retry_rosbot_ros_bridge_foraging",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 0,
+      "agent_id": "${rosbot_agent_id}",
+      "component_id": "ros_bridge",
+      "action": "retry",
+      "timeout_s": 30,
+      "params": { "force": true }
+    },
+
+    {
+      "name": "ros_bridge_settle_foraging",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": 5
+    },
+
+    {
+      "name": "enable_telemetry_foraging",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "enable_hydra_telemetry_foraging",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "component_id": "ros_bridge",
+          "action": "cfg/telemetry/set",
+          "timeout_s": 10,
+          "params": {
+            "set": {
+              "optitrack_umh_5":       { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 },
+              "natnet_ros_umh_6_pose": { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 }
+            }
+          }
+        },
+        {
+          "name": "enable_rosbot_telemetry_foraging",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 0,
+          "agent_id": "${rosbot_agent_id}",
+          "component_id": "ros_bridge",
+          "action": "cfg/telemetry/set",
+          "timeout_s": 10,
+          "params": {
+            "set": {
+              "puck_registry":    { "enabled": true, "interval_s": 0.2, "change_threshold_percent": 0.0 },
+              "aruco_confirmed":  { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 },
+              "odom":             { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 },
+              "puck_confirmed":   { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 },
+              "foraging_status":  { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 }
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "led_waiting_for_pucks",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${led_agent_id}",
+      "component_id": "led_strip",
+      "action": "effect/theater-chase",
+      "timeout_s": 10,
+      "params": {}
+    },
+
+    {
+      "name": "approval_pucks_placed",
+      "type": "approval",
+      "on_failure": "abort",
+      "message": "Place pucks in the arena, then approve to start foraging.",
+      "timeout_s": 600
+    },
+
+    {
+      "name": "start_recordings",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "start-recordings",
+      "template_params": {
+        "robot_id":                    "${robot_id}",
+        "optitrack_agent_id":          "${optitrack_agent_id}",
+        "camera_agent_id":             "${camera_agent_id}",
+        "rosbag_output_dir":           "${rosbag_output_dir}",
+        "optitrack_rosbag_output_dir": "${optitrack_rosbag_output_dir}"
+      }
+    },
+
+    {
+      "name": "led_foraging_running",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${led_agent_id}",
+      "component_id": "led_strip",
+      "action": "effect/glow",
+      "timeout_s": 10,
+      "params": {}
+    },
+
+    {
+      "name": "start_foraging",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 0,
+      "agent_id": "${rosbot_agent_id}",
+      "component_id": "ros_bridge",
+      "action": "roslaunch-start",
+      "timeout_s": 30,
+      "params": {
+        "data": {
+          "package": "${roslaunch_package}",
+          "launch_file": "${roslaunch_file}"
+        }
+      }
+    },
+
+    {
+      "name": "led_experiment_complete",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${led_agent_id}",
+      "component_id": "led_strip",
+      "action": "effect/rainbow",
+      "timeout_s": 10,
+      "params": {}
+    }
+
+  ]
+}

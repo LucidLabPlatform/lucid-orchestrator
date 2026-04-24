@@ -1,0 +1,226 @@
+{
+  "id": "reset-env-setup",
+  "name": "Reset Env Setup",
+  "version": "1.0.0",
+  "description": "Sets up the full reset-to-start environment (Docker, roscore, clocks, ROS bridges, OptiTrack, topic links) without launching reset_to_start.launch. Run this, then launch the reset node manually. Runs until cancelled.",
+  "tags": ["rosbot", "navigation", "optitrack"],
+  "parameters": {
+    "rosbot_agent_id": { "type": "string", "default": "rosbot",               "required": true,  "description": "Agent ID for the ROSbot" },
+    "hydra_agent_id":  { "type": "string", "default": "hydra",                "required": true,  "description": "Agent ID for the Hydra node" },
+    "led_agent_id":    { "type": "string", "default": "led_truss",            "required": false, "description": "Agent ID for the LED strip" },
+    "robot_host":      { "type": "string", "default": "husarion@10.205.3.20", "required": false, "description": "SSH target for the physical ROSbot" },
+    "compose_file":    { "type": "string", "default": "compose_farah.yaml",   "required": false, "description": "Docker compose file on the ROSbot" }
+  },
+  "steps": [
+    {
+      "name": "preflight_ping",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        { "name": "ping_rosbot", "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${rosbot_agent_id}", "action": "ping", "timeout_s": 10, "params": {} },
+        { "name": "ping_hydra",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${hydra_agent_id}",  "action": "ping", "timeout_s": 10, "params": {} }
+      ]
+    },
+    {
+      "name": "sync_clocks",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        { "name": "chrony_hydra",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${hydra_agent_id}",  "component_id": "chrony", "action": "start_sync", "timeout_s": 15, "params": {} },
+        { "name": "chrony_rosbot", "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${rosbot_agent_id}", "component_id": "chrony", "action": "start_sync", "timeout_s": 15, "params": {} }
+      ]
+    },
+    {
+      "name": "bringup_ros_env",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "restart_rosbot_docker",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 1,
+          "agent_id": "${rosbot_agent_id}",
+          "component_id": "exec",
+          "action": "spawn",
+          "timeout_s": 15,
+          "params": {
+            "name": "rosbot_docker",
+            "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${robot_host} 'docker compose -f ${compose_file} down && docker compose -f ${compose_file} up'"
+          }
+        },
+        {
+          "name": "start_roscore_hydra",
+          "type": "command",
+          "on_failure": "continue",
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "component_id": "exec",
+          "action": "spawn",
+          "timeout_s": 15,
+          "params": { "name": "roscore", "command": "source /opt/ros/noetic/setup.bash && roscore" }
+        }
+      ]
+    },
+    {
+      "name": "ros_env_settle",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": 60
+    },
+    {
+      "name": "stop_existing_roslaunch",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${rosbot_agent_id}",
+      "component_id": "ros_bridge",
+      "action": "roslaunch-stop",
+      "timeout_s": 20,
+      "params": {}
+    },
+    {
+      "name": "reset_ros_bridges",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "reset_hydra_ros_bridge",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "component_id": "ros_bridge",
+          "action": "reset",
+          "timeout_s": 30,
+          "params": {}
+        },
+        {
+          "name": "reset_rosbot_ros_bridge",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 0,
+          "agent_id": "${rosbot_agent_id}",
+          "component_id": "ros_bridge",
+          "action": "reset",
+          "timeout_s": 30,
+          "params": {}
+        }
+      ]
+    },
+    {
+      "name": "ros_bridge_settle",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": 5
+    },
+    {
+      "name": "configure_telemetry",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "enable_optitrack_telemetry",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "component_id": "ros_bridge",
+          "action": "cfg/telemetry/set",
+          "timeout_s": 10,
+          "params": {
+            "set": {
+              "optitrack_umh_5": { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 }
+            }
+          }
+        },
+        {
+          "name": "enable_reset_status_telemetry",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 0,
+          "agent_id": "${rosbot_agent_id}",
+          "component_id": "ros_bridge",
+          "action": "cfg/telemetry/set",
+          "timeout_s": 10,
+          "params": {
+            "set": {
+              "reset_status": { "enabled": true, "interval_s": 0.1, "change_threshold_percent": 0.0 }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "create_topic_links",
+      "type": "parallel",
+      "on_failure": "abort",
+      "retries": 0,
+      "steps": [
+        {
+          "name": "link_optitrack_to_rosbot",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${hydra_agent_id}/components/ros_bridge/telemetry/optitrack_umh_5",
+          "target_topic": "lucid/agents/${rosbot_agent_id}/components/ros_bridge/cmd/optitrack_pose",
+          "select_clause": "payload.value as value",
+          "payload_template": "{\"data\": ${value}}",
+          "qos": 0
+        },
+        {
+          "name": "create_led_nav_link",
+          "type": "topic_link",
+          "on_failure": "continue",
+          "retries": 0,
+          "operation": "create",
+          "source_topic": "lucid/agents/${rosbot_agent_id}/components/ros_bridge/telemetry/reset_status",
+          "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-range-percent",
+          "select_clause": "CASE WHEN payload.value.data.pos_error >= 2.0 THEN 0 WHEN payload.value.data.pos_error <= 0.0 THEN 100 ELSE (1.0 - payload.value.data.pos_error / 2.0) * 100 END as end_pct",
+          "payload_template": "{\"color\": {\"r\": 0, \"g\": 255, \"b\": 0}, \"start_percent\": 0, \"end_percent\": ${end_pct}}",
+          "qos": 0
+        }
+      ]
+    },
+    {
+      "name": "start_optitrack",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 1,
+      "agent_id": "${hydra_agent_id}",
+      "component_id": "ros_bridge",
+      "action": "roslaunch-start",
+      "timeout_s": 30,
+      "params": {
+        "data": {
+          "package": "optitrack_ros_communication",
+          "launch_file": "optitrack_nodes.launch",
+          "args": {
+            "serverIP": "10.205.3.3",
+            "namespace": "natnet_ros",
+            "clientIP": "10.205.10.254",
+            "serverType": "unicast"
+          }
+        }
+      }
+    },
+    {
+      "name": "optitrack_settle",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": 15
+    },
+    {
+      "name": "keep_alive",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": 86400
+    }
+  ]
+}

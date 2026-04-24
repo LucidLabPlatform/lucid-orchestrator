@@ -1,0 +1,52 @@
+{
+  "id": "roslaunch-with-rosbot-master",
+  "name": "Roslaunch with ROSbot Master",
+  "version": "1.0.0",
+  "description": "Restarts the ROSbot Docker ROS environment and rosserial via SSH from the exec component, then launches a ROS package via ros_bridge. Use this when you need a clean ROS environment on the ROSbot.",
+  "tags": ["ros", "rosbot", "docker"],
+  "parameters": {
+    "agent_id":          { "type": "string", "default": null,                      "required": true,  "description": "Agent running exec and ros_bridge components" },
+    "robot_host":        { "type": "string", "default": "husarion@10.205.3.20",    "required": true,  "description": "SSH target for the physical ROSbot (user@host)" },
+    "compose_file":      { "type": "string", "default": "compose_farah.yaml",      "required": false, "description": "Docker compose file on the ROSbot" },
+    "roslaunch_package": { "type": "string", "default": "foraging_bringup",        "required": true,  "description": "ROS package containing the launch file" },
+    "roslaunch_file":    { "type": "string", "default": "foraging_experiment.launch","required": true, "description": "Launch file to run" },
+    "ros_launch_timeout_s": { "type": "float", "default": 30.0,                   "required": false, "description": "Seconds to wait for ROS nodes to start" }
+  },
+  "steps": [
+    {
+      "name": "restart_ros_env",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 1,
+      "agent_id": "${agent_id}",
+      "component_id": "exec",
+      "action": "run",
+      "timeout_s": 90,
+      "params": {
+        "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${robot_host} 'docker compose -f ${compose_file} down && docker compose -f ${compose_file} up -d && sleep 15 && port=$(readlink -f /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0) && rosrun rosserial_python serial_node.py $port &'"
+      }
+    },
+    {
+      "name": "roslaunch_stop",
+      "type": "command",
+      "on_failure": "continue",
+      "retries": 0,
+      "agent_id": "${agent_id}",
+      "component_id": "ros_bridge",
+      "action": "roslaunch-stop",
+      "timeout_s": 15,
+      "params": {}
+    },
+    {
+      "name": "roslaunch_start",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 2,
+      "agent_id": "${agent_id}",
+      "component_id": "ros_bridge",
+      "action": "roslaunch-start",
+      "timeout_s": "${ros_launch_timeout_s}",
+      "params": { "data": { "package": "${roslaunch_package}", "launch_file": "${roslaunch_file}" } }
+    }
+  ]
+}
