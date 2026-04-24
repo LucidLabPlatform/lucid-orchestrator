@@ -134,6 +134,6 @@ def load_seed_templates() -> list[TemplateDef]:
         return []
     templates = []
     for fname in sorted(os.listdir(_TEMPLATES_DIR)):
-        if fname.endswith((".yaml", ".yml")):
+        if fname.endswith((".yaml", ".yml", ".json")):
             templates.append(load_template(os.path.join(_TEMPLATES_DIR, fname)))
     return templates
