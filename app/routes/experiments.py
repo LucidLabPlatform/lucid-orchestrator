@@ -59,6 +59,65 @@ def get_template(template_id: str):
     return dict(row)
 
 
+@router.get("/templates/{template_id}/resolve")
+def resolve_template(template_id: str):
+    """Return the template with all sub-template steps recursively expanded.
+
+    Each ``type: "template"`` step gains ``resolved_steps`` (the child
+    template's step list) and ``resolved_parameters`` (the child template's
+    parameter schema).  Useful for the run-configurator UI which needs to
+    render the full step tree before execution.
+    """
+    _MAX_DEPTH = 5
+
+    def _load_definition(tid: str) -> dict | None:
+        with DB.connect() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT definition, parameters_schema FROM experiment_templates WHERE id = %s",
+                    (tid,),
+                )
+                row = cur.fetchone()
+        return dict(row) if row else None
+
+    def _resolve_steps(steps: list[dict], depth: int = 0) -> list[dict]:
+        if depth > _MAX_DEPTH:
+            return steps
+        for step in steps:
+            if step.get("type") == "template" and step.get("template_id"):
+                child = _load_definition(step["template_id"])
+                if child:
+                    child_def = child.get("definition") or {}
+                    child_steps = child_def.get("steps") or []
+                    child_params = child.get("parameters_schema") or child_def.get("parameters") or {}
+                    step["resolved_steps"] = _resolve_steps(child_steps, depth + 1)
+                    step["resolved_parameters"] = child_params
+            if step.get("type") == "parallel" and step.get("steps"):
+                step["steps"] = _resolve_steps(step["steps"], depth)
+        return steps
+
+    with DB.connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, name, version, description, parameters_schema, definition, tags, created_at
+                FROM experiment_templates
+                WHERE id = %s
+                """,
+                (template_id,),
+            )
+            row = cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Template '{template_id}' not found")
+
+    result = dict(row)
+    definition = result.get("definition") or {}
+    if isinstance(definition, dict) and "steps" in definition:
+        definition["steps"] = _resolve_steps(definition["steps"])
+        result["definition"] = definition
+    return result
+
+
 @router.delete("/templates/{template_id}")
 def delete_template(template_id: str):
     with DB.connect() as conn:

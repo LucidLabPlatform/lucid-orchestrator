@@ -108,7 +108,8 @@ async def lifespan(app: FastAPI):
     ws_mgr = WebSocketManager()
     rrm = RequestResponseManager()
 
-    bridge = MqttBridge(event_queue, rrm)
+    mqtt_client_id = os.environ.get("MQTT_CLIENT_ID", "central-command")
+    bridge = MqttBridge(event_queue, rrm, client_id=mqtt_client_id)
     bridge.start()
 
     broadcaster = Broadcaster(event_queue, ws_mgr)

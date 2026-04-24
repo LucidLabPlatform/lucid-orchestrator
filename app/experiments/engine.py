@@ -193,7 +193,9 @@ class ExperimentEngine:
                     "run_id": run_id,
                     "step_index": step_index,
                     "step_name": step.name,
+                    "step_type": step.type,
                     "attempt": attempt,
+                    "request_payload": request_payload,
                     "ts": started_at.isoformat(),
                 }
             )
@@ -219,8 +221,10 @@ class ExperimentEngine:
                         "run_id": run_id,
                         "step_index": step_index,
                         "step_name": step.name,
+                        "step_type": step.type,
                         "attempt": attempt,
                         "duration_ms": duration_ms,
+                        "request_payload": request_payload,
                         "result": result,
                         "ts": ended_at.isoformat(),
                     }
@@ -244,8 +248,10 @@ class ExperimentEngine:
                         "run_id": run_id,
                         "step_index": step_index,
                         "step_name": step.name,
+                        "step_type": step.type,
                         "attempt": attempt,
                         "error": last_error,
+                        "request_payload": request_payload,
                         "ts": ended_at.isoformat(),
                     }
                 )
