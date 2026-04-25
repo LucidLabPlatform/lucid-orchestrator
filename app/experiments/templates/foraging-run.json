@@ -38,6 +38,17 @@
       "params": { "name": "rosbot_docker" }
     },
     {
+      "name": "stop-remote-docker",
+      "type": "command",
+      "when": "${launch_rosbot}",
+      "on_failure": "continue",
+      "agent_id": "${robot_id}",
+      "component_id": "exec",
+      "action": "run",
+      "timeout_s": 30,
+      "params": { "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${robot_host} 'docker compose -f ${compose_file} down'" }
+    },
+    {
       "name": "restart-rosbot-docker",
       "type": "command",
       "when": "${launch_rosbot}",
@@ -58,6 +69,17 @@
       "duration_s": 15.0
     },
 
+    {
+      "name": "kill-old-rosserial",
+      "type": "command",
+      "when": "${launch_rosbot}",
+      "on_failure": "continue",
+      "agent_id": "${robot_id}",
+      "component_id": "exec",
+      "action": "kill",
+      "timeout_s": 15,
+      "params": { "name": "rosserial" }
+    },
     {
       "name": "start-rosserial",
       "type": "command",
@@ -154,7 +176,7 @@
       "agent_id": "${robot_id}",
       "component_id": "ros_bridge",
       "telemetry_metric": "foraging_status",
-      "condition": { "field": "value.data.state", "in": ["completed", "error"] },
+      "condition": { "field": "value.state", "in": ["completed", "error"] },
       "timeout_s": 1800,
       "on_timeout": "continue"
     },
