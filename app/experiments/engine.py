@@ -155,7 +155,6 @@ class ExperimentEngine:
         log.info("Approval granted for run %s", run_id)
 
     async def _cancel_run(self, run_id: str, step_index: int) -> None:
-        await self._cleanup_topic_links(run_id)
         ended_at = _now()
         await self._db(self._sync_update_run, run_id, STATUS_CANCELLED, None, ended_at, "Cancelled by user")
         await self._broadcast(
@@ -607,7 +606,6 @@ class ExperimentEngine:
             await self._broadcast({"type": "topic_link_deleted", "link_id": row["id"]})
 
     async def _abort_run(self, run_id: str, error: str) -> None:
-        await self._cleanup_topic_links(run_id)
         ended_at = _now()
         await self._db(self._sync_update_run, run_id, STATUS_FAILED, None, ended_at, error)
         await self._broadcast({"type": "experiment_failed", "run_id": run_id, "error": error, "ts": ended_at.isoformat()})
