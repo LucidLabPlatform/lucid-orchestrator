@@ -755,7 +755,7 @@ def auth_log(limit: int = 200):
                 FROM authn_log
                 UNION ALL
                 SELECT ts, 'authz' AS type, username, clientid, topic, action, result
-                FROM authz_log
+                FROM authz_denied
                 ORDER BY ts DESC
                 LIMIT %s
                 """,
