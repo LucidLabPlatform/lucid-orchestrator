@@ -58,13 +58,13 @@
     },
 
     {
-      "name": "connect-ros-bridges",
+      "name": "start-ros-bridges",
       "type": "parallel",
       "on_failure": "abort",
       "steps": [
-        { "name": "connect-hydra-ros-bridge",  "type": "command", "when": "${launch_hydra}",  "on_failure": "abort", "agent_id": "${hydra_agent_id}",  "component_id": "ros_bridge", "action": "retry", "timeout_s": 30, "params": { "force": true } },
-        { "name": "connect-rosbot-ros-bridge", "type": "command", "when": "${launch_rosbot}", "on_failure": "abort", "agent_id": "${robot_id}",        "component_id": "ros_bridge", "action": "retry", "timeout_s": 30, "params": { "force": true } },
-        { "name": "connect-camera-ros-bridge", "type": "command", "when": "${launch_camera}", "on_failure": "abort", "agent_id": "${camera_agent_id}", "component_id": "ros_bridge", "action": "retry", "timeout_s": 30, "params": { "force": true } }
+        { "name": "start-hydra-ros-bridge",  "type": "command", "when": "${launch_hydra}",  "on_failure": "abort", "agent_id": "${hydra_agent_id}",  "component_id": "ros_bridge", "action": "start_ros", "timeout_s": 30, "params": {} },
+        { "name": "start-rosbot-ros-bridge", "type": "command", "when": "${launch_rosbot}", "on_failure": "abort", "agent_id": "${robot_id}",        "component_id": "ros_bridge", "action": "start_ros", "timeout_s": 30, "params": {} },
+        { "name": "start-camera-ros-bridge", "type": "command", "when": "${launch_camera}", "on_failure": "abort", "agent_id": "${camera_agent_id}", "component_id": "ros_bridge", "action": "start_ros", "timeout_s": 30, "params": {} }
       ]
     },
 

@@ -101,15 +101,27 @@
     },
 
     {
-      "name": "reset-rosbot-ros-bridge",
+      "name": "stop-rosbot-ros-bridge",
+      "type": "command",
+      "when": "${launch_rosbot}",
+      "on_failure": "continue",
+      "agent_id": "${robot_id}",
+      "component_id": "ros_bridge",
+      "action": "stop_ros",
+      "timeout_s": 30,
+      "params": {}
+    },
+
+    {
+      "name": "start-rosbot-ros-bridge",
       "type": "command",
       "when": "${launch_rosbot}",
       "on_failure": "abort",
       "agent_id": "${robot_id}",
       "component_id": "ros_bridge",
-      "action": "retry",
+      "action": "start_ros",
       "timeout_s": 30,
-      "params": { "force": true }
+      "params": {}
     },
 
     {
