@@ -55,6 +55,9 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
         where = "WHERE a.agent_id = %s" if agent_id else ""
         params = (agent_id,) if agent_id else ()
 
+        # mqtt_users WHERE role='agent' is the registry. Exposed as the same
+        # (agent_id, first_seen_ts, last_seen_ts) shape via aliasing so the
+        # downstream JOINs and API response shape are unchanged.
         cur.execute(
             f"""
             SELECT
@@ -86,7 +89,11 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
                 cfg_telemetry.disk_pct_interval_s,
                 cfg_telemetry.disk_pct_threshold,
                 cfg_telemetry.received_ts AS cfg_telemetry_received_ts
-            FROM agents a
+            FROM (
+                SELECT username AS agent_id, first_seen_ts, last_seen_ts
+                FROM mqtt_users
+                WHERE role = 'agent'
+            ) a
             LEFT JOIN agent_status s ON s.agent_id = a.agent_id
             LEFT JOIN agent_state st ON st.agent_id = a.agent_id
             LEFT JOIN agent_metadata m ON m.agent_id = a.agent_id
@@ -94,7 +101,7 @@ def _query_agents(conn, agent_id: str | None = None) -> list[dict]:
             LEFT JOIN agent_cfg_logging cfg_logging ON cfg_logging.agent_id = a.agent_id
             LEFT JOIN agent_cfg_telemetry cfg_telemetry ON cfg_telemetry.agent_id = a.agent_id
             {where}
-            ORDER BY a.last_seen_ts DESC, a.agent_id
+            ORDER BY a.last_seen_ts DESC NULLS LAST, a.agent_id
             """,
             params,
         )
@@ -384,7 +391,10 @@ def get_agent(agent_id: str):
 def delete_agent(agent_id: str, request: Request):
     with DB.connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM agents WHERE agent_id = %s", (agent_id,))
+            cur.execute(
+                "SELECT 1 FROM mqtt_users WHERE username = %s AND role = 'agent'",
+                (agent_id,),
+            )
             exists = cur.fetchone() is not None
         if not exists:
             raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")

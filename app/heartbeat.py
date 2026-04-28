@@ -31,10 +31,11 @@ def _find_stale_agents(conn, timeout_s: float) -> list[str]:
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT a.agent_id
-            FROM agents a
-            JOIN agent_status s ON s.agent_id = a.agent_id
-            WHERE s.state = 'online'
+            SELECT a.username
+            FROM mqtt_users a
+            JOIN agent_status s ON s.agent_id = a.username
+            WHERE a.role = 'agent'
+              AND s.state = 'online'
               AND a.last_seen_ts < NOW() - INTERVAL '%s seconds'
             """,
             (timeout_s,),
