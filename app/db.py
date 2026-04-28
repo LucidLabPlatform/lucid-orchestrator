@@ -211,6 +211,16 @@ def init_schema(url: str | None = None) -> None:
                     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
                 )
             """)
+            # Sweep ghost agent rows: any agents row whose agent_id isn't an
+            # active role='agent' user in mqtt_users. Idempotent — affects 0
+            # rows once the system is clean. Goes away in phase 4 when the
+            # agents table is dropped.
+            cur.execute("""
+                DELETE FROM agents
+                WHERE agent_id NOT IN (
+                    SELECT username FROM mqtt_users WHERE role = 'agent'
+                )
+            """)
         conn.commit()
 
 

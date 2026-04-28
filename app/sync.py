@@ -36,6 +36,9 @@ def sync_mqtt_users(app, strict: bool = False) -> dict:
 
     with DB.connect() as conn:
         DB.replace_mqtt_shadow(conn, principals, acl_rules, synced_at)
+        # Transitional: agents table still exists and FKs from agent_cfg/state/etc.
+        # point to it. Keep ensure_agent so those FKs are satisfied. Phase 4 drops
+        # the agents table and repoints FKs to mqtt_users; this loop goes away then.
         for principal in principals:
             if principal.get("role") == "agent":
                 DB.ensure_agent(conn, principal["username"], synced_at)
