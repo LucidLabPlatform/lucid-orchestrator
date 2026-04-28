@@ -46,10 +46,10 @@ async def send_command(
 
     with DB.connect() as conn:
         if component_id:
+            # mqtt_users row must already exist (FK target); only ensure the
+            # components row since components aren't auto-created by sync.
             DB.ensure_component(conn, agent_id, component_id, ts)
-        else:
-            DB.ensure_agent(conn, agent_id, ts)
-        conn.commit()
+            conn.commit()
 
     bridge = app.state.bridge
     if wait:

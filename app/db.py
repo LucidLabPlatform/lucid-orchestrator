@@ -211,41 +211,34 @@ def init_schema(url: str | None = None) -> None:
                     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
                 )
             """)
-            # Sweep ghost agent rows: any agents row whose agent_id isn't an
-            # active role='agent' user in mqtt_users. Idempotent — affects 0
-            # rows once the system is clean. Goes away in phase 4 when the
-            # agents table is dropped.
+            # Phase 4: repoint every FK that pointed to agents(agent_id) onto
+            # mqtt_users(username), then drop the agents table. Idempotent —
+            # the FK loop yields 0 rows once migrated, DROP TABLE IF EXISTS is
+            # a no-op afterwards.
             cur.execute("""
-                DELETE FROM agents
-                WHERE agent_id NOT IN (
-                    SELECT username FROM mqtt_users WHERE role = 'agent'
-                )
+                DO $$
+                DECLARE
+                    rec RECORD;
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'agents') THEN
+                        FOR rec IN
+                            SELECT conname, conrelid::regclass::text AS table_name
+                            FROM pg_constraint
+                            WHERE contype = 'f' AND confrelid = 'agents'::regclass
+                        LOOP
+                            EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I',
+                                rec.table_name, rec.conname);
+                            EXECUTE format(
+                                'ALTER TABLE %s ADD CONSTRAINT %I FOREIGN KEY (agent_id) '
+                                'REFERENCES mqtt_users(username) ON DELETE CASCADE',
+                                rec.table_name, rec.conname
+                            );
+                        END LOOP;
+                        DROP TABLE agents;
+                    END IF;
+                END $$;
             """)
         conn.commit()
-
-
-def upsert_agent(conn: psycopg2.extensions.connection, agent_id: str, ts: datetime) -> None:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO agents (agent_id, first_seen_ts, last_seen_ts)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (agent_id) DO UPDATE SET last_seen_ts = EXCLUDED.last_seen_ts
-            """,
-            (agent_id, ts, ts),
-        )
-
-
-def ensure_agent(conn: psycopg2.extensions.connection, agent_id: str, ts: datetime) -> None:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO agents (agent_id, first_seen_ts, last_seen_ts)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (agent_id) DO NOTHING
-            """,
-            (agent_id, ts, ts),
-        )
 
 
 def upsert_component(
@@ -254,7 +247,8 @@ def upsert_component(
     component_id: str,
     ts: datetime,
 ) -> None:
-    upsert_agent(conn, agent_id, ts)
+    """Upsert a components row. Caller must ensure mqtt_users has a role='agent'
+    row for ``agent_id`` (the components FK requires it)."""
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -272,7 +266,8 @@ def ensure_component(
     component_id: str,
     ts: datetime,
 ) -> None:
-    ensure_agent(conn, agent_id, ts)
+    """Ensure a components row exists. Caller must ensure mqtt_users has the
+    role='agent' parent row first (FK constraint)."""
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -308,16 +303,29 @@ def replace_mqtt_shadow(
     acl_rules: Iterable[dict],
     synced_at: datetime,
 ) -> None:
-    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("SELECT username, created_at FROM mqtt_users")
-        existing_rows = cur.fetchall()
-    existing_created_at = {row["username"]: row["created_at"] for row in existing_rows}
+    """UPSERT the EMQX user/ACL snapshot into Postgres.
+
+    Uses INSERT ... ON CONFLICT for principals so existing rows survive
+    (their first_seen_ts/last_seen_ts and any FK-CASCADE child rows in
+    agent_cfg/state/etc. are preserved). Removed principals are deleted
+    explicitly, which cascades through the FKs cleanly.
+    """
+    principals = list(principals)
+    acl_rules = list(acl_rules)
+    incoming_usernames = [p["username"] for p in principals]
 
     with conn.cursor() as cur:
-        cur.execute("DELETE FROM mqtt_acl_rules")
-        cur.execute("DELETE FROM mqtt_users")
+        # Drop principals that no longer exist in EMQX (and their cascading
+        # cfg/state/metadata via FK ON DELETE CASCADE).
+        if incoming_usernames:
+            cur.execute(
+                "DELETE FROM mqtt_users WHERE username <> ALL(%s)",
+                (incoming_usernames,),
+            )
+        else:
+            cur.execute("DELETE FROM mqtt_users")
+        # Upsert principals — preserves existing rows (and their child FKs).
         for principal in principals:
-            created_at = existing_created_at.get(principal["username"]) or synced_at
             cur.execute(
                 """
                 INSERT INTO mqtt_users (
@@ -325,16 +333,26 @@ def replace_mqtt_shadow(
                     last_synced_at, sync_status, last_error
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, 'synced', NULL)
+                ON CONFLICT (username) DO UPDATE SET
+                    role              = EXCLUDED.role,
+                    has_password_user = EXCLUDED.has_password_user,
+                    updated_at        = EXCLUDED.updated_at,
+                    last_synced_at    = EXCLUDED.last_synced_at,
+                    sync_status       = 'synced',
+                    last_error        = NULL
                 """,
                 (
                     principal["username"],
                     principal["role"],
                     principal.get("has_password_user", True),
-                    created_at,
+                    synced_at,
                     synced_at,
                     synced_at,
                 ),
             )
+        # ACL rules are simpler: full replace per principal is cheap, and
+        # nothing FK-references mqtt_acl_rules beyond mqtt_users.
+        cur.execute("DELETE FROM mqtt_acl_rules")
         for rule in acl_rules:
             cur.execute(
                 """
@@ -350,17 +368,6 @@ def replace_mqtt_shadow(
                     synced_at,
                 ),
             )
-        # Transitional: while the `agents` table still exists, copy its
-        # first_seen_ts / last_seen_ts onto mqtt_users for role='agent' rows
-        # so consumers can read all registry data from one place.
-        cur.execute("""
-            UPDATE mqtt_users m
-            SET first_seen_ts = a.first_seen_ts,
-                last_seen_ts  = a.last_seen_ts
-            FROM agents a
-            WHERE a.agent_id = m.username
-              AND m.role = 'agent'
-        """)
 
 
 def list_mqtt_users(
@@ -561,34 +568,23 @@ def get_user_role(conn: psycopg2.extensions.connection, username: str) -> str | 
 
 
 def purge_agent_data(conn: psycopg2.extensions.connection, agent_id: str) -> bool:
-    with conn.cursor() as cur:
-        cur.execute("SELECT agent_id FROM agents WHERE agent_id = %s", (agent_id,))
-        if cur.fetchone() is None:
-            return False
+    """Delete time-series and per-agent data not covered by FK CASCADE.
 
+    Most cfg/state/metadata tables CASCADE-delete via the FK to mqtt_users
+    when the principal is revoked from EMQX and the sync removes the row.
+    This function cleans the rest: hypertables (logs/telemetry/events),
+    commands, client_events, and mqtt_rejected_messages.
+    """
+    with conn.cursor() as cur:
         for table_name in (
-            "component_cfg_telemetry",
-            "component_cfg_logging",
-            "component_cfg",
-            "component_metadata",
-            "component_state",
-            "component_status",
-            "component_events",
-            "component_telemetry",
             "logs",
             "commands",
-            "agent_cfg_telemetry",
-            "agent_cfg_logging",
-            "agent_cfg",
-            "agent_metadata",
-            "agent_state",
-            "agent_status",
             "agent_telemetry",
             "agent_events",
+            "component_telemetry",
+            "component_events",
             "client_events",
             "mqtt_rejected_messages",
-            "components",
-            "agents",
         ):
             cur.execute(f"DELETE FROM {table_name} WHERE agent_id = %s", (agent_id,))
     return True

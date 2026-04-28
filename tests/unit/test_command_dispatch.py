@@ -114,12 +114,12 @@ class TestSendCommand:
         assert payload["color"] == {"r": 255, "g": 0, "b": 0}
 
     @pytest.mark.asyncio
-    async def test_db_ensure_agent_called(self, fake_app, mock_db):
+    async def test_agent_dispatch_does_not_call_ensure_agent(self, fake_app, mock_db):
+        # Under the consolidated mqtt_users model the agent row must already
+        # exist (sync owns it); the dispatch path does not pre-create it.
         db, conn = mock_db
         await send_command(fake_app, agent_id="a1", action="ping")
-        db.ensure_agent.assert_called_once()
-        args = db.ensure_agent.call_args[0]
-        assert args[1] == "a1"
+        db.ensure_agent.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_db_ensure_component_called(self, fake_app, mock_db):
