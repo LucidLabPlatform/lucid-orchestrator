@@ -8,15 +8,29 @@
     "robot_id":       { "type": "string",  "default": "rosbot", "required": true,  "description": "ROSbot agent ID" },
     "hydra_agent_id": { "type": "string",  "default": "hydra",  "required": true,  "description": "Hydra agent" },
     "launch_rosbot":  { "type": "boolean", "default": true,     "required": false, "description": "Disable rosbot reset telemetry" },
-    "launch_hydra":   { "type": "boolean", "default": true,     "required": false, "description": "Disable hydra OptiTrack telemetry" }
+    "launch_hydra":   { "type": "boolean", "default": true,     "required": false, "description": "Disable hydra OptiTrack telemetry" },
+    "led_agent_id":   { "type": "string",  "default": "led_truss", "required": false, "description": "LED strip agent" },
+    "launch_led":     { "type": "boolean", "default": true,     "required": false, "description": "Remove LED topic link" }
   },
   "steps": [
+    {
+      "name": "remove-reset-distance-led-link",
+      "type": "topic_link",
+      "when": "${launch_led}",
+      "on_failure": "continue",
+      "operation": "delete",
+      "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/reset_status",
+      "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-range-percent",
+      "select_clause": "*",
+      "qos": 0
+    },
+
     {
       "name": "disable-reset-telemetry",
       "type": "parallel",
       "on_failure": "continue",
       "steps": [
-        { "name": "disable-optitrack-telemetry",    "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${hydra_agent_id}", "component_id": "ros_bridge", "action": "cfg/telemetry/set", "timeout_s": 10, "params": { "set": { "optitrack_umh_5": { "enabled": false }, "natnet_ros_umh_6_pose": { "enabled": false } } } },
+        { "name": "disable-optitrack-telemetry",    "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${hydra_agent_id}", "component_id": "ros_bridge", "action": "cfg/telemetry/set", "timeout_s": 10, "params": { "set": { "optitrack_umh_4": { "enabled": false } } } },
         { "name": "disable-reset-status-telemetry", "type": "command", "when": "${launch_rosbot}", "on_failure": "continue", "agent_id": "${robot_id}",       "component_id": "ros_bridge", "action": "cfg/telemetry/set", "timeout_s": 10, "params": { "set": { "reset_status": { "enabled": false } } } }
       ]
     }
