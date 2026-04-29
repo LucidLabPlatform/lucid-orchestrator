@@ -347,30 +347,36 @@ class ExperimentEngine:
         run_id: str = "",
         parent_step_index: int = 0,
     ) -> dict:
-        async def _run_sub(sub_index: int, sub: StepDef) -> tuple[str, bool, Any]:
-            # Each sub-step gets its own DB record and retry logic
+        async def _run_sub(sub_index: int, sub: StepDef) -> tuple[str, bool, Any, str]:
+            # Each sub-step gets its own DB record and retry logic.
+            # Return the sub-step's on_failure policy so the aggregator can
+            # honour it — a failed child with on_failure="continue" should not
+            # abort the parent parallel block.
             step_idx = parent_step_index * 1000 + sub_index
             success, result = await self._run_step_with_retries(run_id, step_idx, sub, step_results)
-            return sub.name, success, result
+            return sub.name, success, result, sub.on_failure or "abort"
 
         results_list = await asyncio.gather(
             *[_run_sub(i, sub) for i, sub in enumerate(step.steps or [])],
             return_exceptions=True,
         )
         combined: dict[str, Any] = {}
-        errors: list[str] = []
+        hard_errors: list[str] = []
         for item in results_list:
             if isinstance(item, BaseException):
-                errors.append(str(item))
+                # Unexpected exception from the coroutine itself — always hard-fail.
+                hard_errors.append(str(item))
             else:
-                name, success, result = item
+                name, success, result, on_failure = item
                 if success:
                     combined[name] = result
+                elif on_failure == "continue":
+                    log.warning("Parallel sub-step '%s' failed (continuing): %s", name, result)
                 else:
-                    errors.append(f"{name}: {result}")
+                    hard_errors.append(f"{name}: {result}")
 
-        if errors:
-            raise RuntimeError(f"Parallel sub-steps failed: {'; '.join(errors)}")
+        if hard_errors:
+            raise RuntimeError(f"Parallel sub-steps failed: {'; '.join(hard_errors)}")
         return combined
 
     async def _execute_approval(self, step: StepDef, run_id: str = "") -> dict:
