@@ -109,7 +109,7 @@
       "on_failure": "continue",
       "agent_id": "${robot_id}",
       "component_id": "ros_bridge",
-      "action": "stop_ros",
+      "action": "stop-ros",
       "timeout_s": 30,
       "params": {}
     },
@@ -121,7 +121,7 @@
       "on_failure": "abort",
       "agent_id": "${robot_id}",
       "component_id": "ros_bridge",
-      "action": "start_ros",
+      "action": "start-ros",
       "timeout_s": 30,
       "params": {}
     },
