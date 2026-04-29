@@ -14,10 +14,14 @@
     "camera_agent_id":             { "type": "string",  "default": "camera",      "required": false, "description": "Camera agent" },
     "launch_camera":               { "type": "boolean", "default": false,         "required": false, "description": "Record camera rosbag" },
     "launch_led":                  { "type": "boolean", "default": true,          "required": false, "description": "Show LED transitions" },
-    "goal_x":                      { "type": "float",   "default": 2.9923343658447266, "required": false, "description": "Start X (OptiTrack frame)" },
-    "goal_y":                      { "type": "float",   "default": 1.8303465843200684, "required": false, "description": "Start Y (OptiTrack frame)" },
-    "pos_tolerance":               { "type": "float",   "default": 0.10,          "required": false, "description": "Position tolerance (metres)" },
-    "yaw_tolerance":               { "type": "float",   "default": 0.15,          "required": false, "description": "Yaw tolerance (radians)" },
+    "goal_x":                      { "type": "float",   "default": 2.9923343658447266,      "required": false, "description": "Start X (OptiTrack frame)" },
+    "goal_y":                      { "type": "float",   "default": 1.8303465843200684,      "required": false, "description": "Start Y (OptiTrack frame)" },
+    "goal_qx":                     { "type": "float",   "default": 0.014080903492867947,    "required": false, "description": "Start orientation quaternion X" },
+    "goal_qy":                     { "type": "float",   "default": 0.0073929340578615665,   "required": false, "description": "Start orientation quaternion Y" },
+    "goal_qz":                     { "type": "float",   "default": 0.9293920993804932,      "required": false, "description": "Start orientation quaternion Z" },
+    "goal_qw":                     { "type": "float",   "default": -0.36875131726264954,    "required": false, "description": "Start orientation quaternion W" },
+    "pos_tolerance":               { "type": "float",   "default": 0.10,                    "required": false, "description": "Position tolerance (metres)" },
+    "yaw_tolerance":               { "type": "float",   "default": 0.15,                    "required": false, "description": "Yaw tolerance (radians)" },
     "rosbag_output_dir":           { "type": "string",  "default": "~/lucid-agent-core/data/bags", "required": false, "description": "Rosbag dir on robot" },
     "optitrack_rosbag_output_dir": { "type": "string",  "default": "~/lucid-agent-core/data/bags",        "required": false, "description": "Rosbag dir on OptiTrack agent" },
     "camera_rosbag_output_dir":    { "type": "string",  "default": "~/lucid-agent-core-camera/data/bags", "required": false, "description": "Rosbag dir on camera agent" }
@@ -78,7 +82,7 @@
       "component_id": "ros_bridge",
       "action": "roslaunch-start",
       "timeout_s": 30,
-      "params": { "data": { "package": "foraging_bringup", "launch_file": "reset_to_start.launch", "args": { "goal_x": "${goal_x}", "goal_y": "${goal_y}", "pos_tolerance": "${pos_tolerance}", "yaw_tolerance": "${yaw_tolerance}" } } }
+      "params": { "data": { "package": "foraging_bringup", "launch_file": "reset_to_start.launch", "args": { "goal_x": "${goal_x}", "goal_y": "${goal_y}", "goal_qx": "${goal_qx}", "goal_qy": "${goal_qy}", "goal_qz": "${goal_qz}", "goal_qw": "${goal_qw}", "pos_tolerance": "${pos_tolerance}", "yaw_tolerance": "${yaw_tolerance}" } } }
     },
 
     {
