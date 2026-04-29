@@ -19,9 +19,12 @@
     "launch_led":                  { "type": "boolean", "default": true,                              "required": false, "description": "Show LED transitions" },
     "robot_host":                  { "type": "string",  "default": "husarion@10.205.3.20",            "required": false, "description": "SSH target for ROSbot" },
     "compose_file":                { "type": "string",  "default": "compose_farah.yaml",              "required": false, "description": "Docker compose file on ROSbot" },
-    "goal_x":                      { "type": "float",   "default": 2.987614393234253,                 "required": false, "description": "Start X (OptiTrack frame)" },
-    "goal_y":                      { "type": "float",   "default": 1.837099552154541,                 "required": false, "description": "Start Y (OptiTrack frame)" },
-    "goal_yaw":                    { "type": "float",   "default": -2.3711036734611257,               "required": false, "description": "Start yaw (radians)" },
+    "goal_x":                      { "type": "float",   "default": 2.992316246032715,                 "required": false, "description": "Start X (OptiTrack frame)" },
+    "goal_y":                      { "type": "float",   "default": 1.827694296836853,                 "required": false, "description": "Start Y (OptiTrack frame)" },
+    "goal_qx":                     { "type": "float",   "default": -0.00494308490306139,              "required": false, "description": "Start orientation quaternion X" },
+    "goal_qy":                     { "type": "float",   "default": -0.011712746694684029,             "required": false, "description": "Start orientation quaternion Y" },
+    "goal_qz":                     { "type": "float",   "default": -0.9295409917831421,               "required": false, "description": "Start orientation quaternion Z" },
+    "goal_qw":                     { "type": "float",   "default": 0.3684997856616974,                "required": false, "description": "Start orientation quaternion W" },
     "pos_tolerance":               { "type": "float",   "default": 0.10,                              "required": false, "description": "Position tolerance (metres)" },
     "yaw_tolerance":               { "type": "float",   "default": 0.15,                              "required": false, "description": "Yaw tolerance (radians)" },
     "rosbag_output_dir":           { "type": "string",  "default": "~/lucid-agent-core/data/bags",         "required": false, "description": "Rosbag dir on robot and OptiTrack" },
@@ -77,7 +80,10 @@
         "launch_led": "${launch_led}",
         "goal_x": "${goal_x}",
         "goal_y": "${goal_y}",
-        "goal_yaw": "${goal_yaw}",
+        "goal_qx": "${goal_qx}",
+        "goal_qy": "${goal_qy}",
+        "goal_qz": "${goal_qz}",
+        "goal_qw": "${goal_qw}",
         "pos_tolerance": "${pos_tolerance}",
         "yaw_tolerance": "${yaw_tolerance}",
         "rosbag_output_dir": "${rosbag_output_dir}",
@@ -134,8 +140,10 @@
       "template_params": {
         "robot_id": "${robot_id}",
         "hydra_agent_id": "${hydra_agent_id}",
+        "led_agent_id": "${led_agent_id}",
         "launch_rosbot": "${launch_rosbot}",
-        "launch_hydra": "${launch_hydra}"
+        "launch_hydra": "${launch_hydra}",
+        "launch_led": "${launch_led}"
       }
     },
 
@@ -148,8 +156,10 @@
       "template_params": {
         "robot_id": "${robot_id}",
         "hydra_agent_id": "${hydra_agent_id}",
+        "led_agent_id": "${led_agent_id}",
         "launch_rosbot": "${launch_rosbot}",
-        "launch_hydra": "${launch_hydra}"
+        "launch_hydra": "${launch_hydra}",
+        "launch_led": "${launch_led}"
       }
     },
 
@@ -163,6 +173,8 @@
         "robot_id": "${robot_id}",
         "hydra_agent_id": "${hydra_agent_id}",
         "camera_agent_id": "${camera_agent_id}",
+        "robot_host": "${robot_host}",
+        "compose_file": "${compose_file}",
         "launch_rosbot": "${launch_rosbot}",
         "launch_hydra": "${launch_hydra}",
         "launch_camera": "${launch_camera}"
