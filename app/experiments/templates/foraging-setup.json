@@ -58,6 +58,17 @@
     },
 
     {
+      "name": "stop-ros-bridges",
+      "type": "parallel",
+      "on_failure": "continue",
+      "steps": [
+        { "name": "stop-hydra-ros-bridge",  "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${hydra_agent_id}",  "component_id": "ros_bridge", "action": "stop-ros", "timeout_s": 15, "params": {} },
+        { "name": "stop-rosbot-ros-bridge", "type": "command", "when": "${launch_rosbot}", "on_failure": "continue", "agent_id": "${robot_id}",        "component_id": "ros_bridge", "action": "stop-ros", "timeout_s": 15, "params": {} },
+        { "name": "stop-camera-ros-bridge", "type": "command", "when": "${launch_camera}", "on_failure": "continue", "agent_id": "${camera_agent_id}", "component_id": "ros_bridge", "action": "stop-ros", "timeout_s": 15, "params": {} }
+      ]
+    },
+
+    {
       "name": "start-ros-bridges",
       "type": "parallel",
       "on_failure": "abort",
@@ -78,13 +89,13 @@
       ]
     },
 
+    { "name": "led-setup-complete", "type": "command", "when": "${launch_led}", "on_failure": "continue", "agent_id": "${led_agent_id}", "component_id": "led_strip", "action": "effect/color-wipe", "timeout_s": 10, "params": { "wait_ms": 10 } },
+
     {
       "name": "wait-for-sensors",
       "type": "delay",
       "on_failure": "abort",
       "duration_s": "${sensor_settle_s}"
-    },
-
-    { "name": "led-setup-complete", "type": "command", "when": "${launch_led}", "on_failure": "continue", "agent_id": "${led_agent_id}", "component_id": "led_strip", "action": "effect/color-wipe", "timeout_s": 10, "params": {} }
+    }
   ]
 }
