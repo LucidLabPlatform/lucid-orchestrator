@@ -114,10 +114,6 @@ class TopicLinkManager:
                         "payload": payload_tpl,
                         "qos": link.qos,
                         "retain": False,
-                        "mqtt_properties": {},
-                        "user_properties": {},
-                        "from_clientid": "rule-engine",
-                        "from_username": "cc",
                     },
                 }
             ],
