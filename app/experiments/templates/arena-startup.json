@@ -79,17 +79,6 @@
         "hydra_agent_id":    "${hydra_agent_id}",
         "room_brightness":   "${room_brightness}"
       }
-    },
-    {
-      "name": "led_startup_ready",
-      "type": "command",
-      "on_failure": "continue",
-      "retries": 0,
-      "agent_id": "${led_agent_id}",
-      "component_id": "led_strip",
-      "action": "set_color",
-      "timeout_s": 10,
-      "params": { "color": { "r": 0, "g": 255, "b": 0 } }
     }
   ]
 }

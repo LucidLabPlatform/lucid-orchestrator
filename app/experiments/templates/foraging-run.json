@@ -25,7 +25,7 @@
     "camera_rosbag_output_dir":    { "type": "string",  "default": "~/lucid-agent-core-camera/data/bags",  "required": false, "description": "Rosbag dir on camera agent" },
     "bridge_settle_s":             { "type": "float",   "default": 5.0,                          "required": false, "description": "Seconds to wait after ros_bridge retry" },
     "explore_puck_pct":            { "type": "float",   "default": 0.5,                          "required": false, "description": "Fraction of explore time spent on pucks" },
-    "explore_corner_pct":          { "type": "float",   "default": 0.67,                         "required": false, "description": "Fraction of explore time spent on corners" }
+    "explore_corner_pct":          { "type": "float",   "default": 0.4,                         "required": false, "description": "Fraction of explore time spent on corners" }
   },
   "steps": [
     {
@@ -176,7 +176,7 @@
       "component_id": "ros_bridge",
       "action": "roslaunch-start",
       "timeout_s": 30,
-      "params": { "data": { "package": "${roslaunch_package}", "launch_file": "${roslaunch_file}", "args": { "num_pucks": "3", "step_size": "0.5", "walk_sigma": "0.5", "max_vel_x": "0.1", "explore_puck_pct": "${explore_puck_pct}", "explore_corner_pct": "${explore_corner_pct}" } } }
+      "params": { "data": { "package": "${roslaunch_package}", "launch_file": "${roslaunch_file}", "args": { "num_pucks": "3", "step_size": "0.5", "walk_sigma": "0.5", "max_vel_x": "0.2", "explore_puck_pct": "${explore_puck_pct}", "explore_corner_pct": "${explore_corner_pct}" } } }
     },
 
     {

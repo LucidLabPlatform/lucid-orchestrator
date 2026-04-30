@@ -8,6 +8,8 @@
     "robot_id":           { "type": "string",  "default": "rosbot",  "required": true,  "description": "ROSbot agent ID" },
     "hydra_agent_id":     { "type": "string",  "default": "hydra",   "required": true,  "description": "Hydra agent" },
     "camera_agent_id":    { "type": "string",  "default": "camera",  "required": false, "description": "Camera agent" },
+    "robot_host":         { "type": "string",  "default": "husarion@10.205.3.20", "required": false, "description": "SSH target for ROSbot" },
+    "compose_file":       { "type": "string",  "default": "compose_farah.yaml",  "required": false, "description": "Docker compose file on ROSbot" },
     "launch_rosbot":      { "type": "boolean", "default": true,      "required": false, "description": "Stop rosbot docker" },
     "launch_hydra":       { "type": "boolean", "default": true,      "required": false, "description": "Stop hydra roscore and OptiTrack" },
     "launch_camera":      { "type": "boolean", "default": false,     "required": false, "description": "Stop camera roscore and camera launch" }
@@ -41,7 +43,9 @@
       "steps": [
         { "name": "stop-roscore-hydra",  "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${hydra_agent_id}",  "component_id": "exec", "action": "kill", "timeout_s": 15, "params": { "name": "roscore" } },
         { "name": "stop-roscore-camera", "type": "command", "when": "${launch_camera}", "on_failure": "continue", "agent_id": "${camera_agent_id}", "component_id": "exec", "action": "kill", "timeout_s": 15, "params": { "name": "roscore" } },
-        { "name": "stop-rosbot-docker",  "type": "command", "when": "${launch_rosbot}", "on_failure": "continue", "agent_id": "${robot_id}",        "component_id": "exec", "action": "kill", "timeout_s": 15, "params": { "name": "rosbot_docker" } }
+        { "name": "stop-rosbot-docker",  "type": "command", "when": "${launch_rosbot}", "on_failure": "continue", "agent_id": "${robot_id}",        "component_id": "exec", "action": "kill", "timeout_s": 15, "params": { "name": "rosbot_docker" } },
+        { "name": "stop-remote-docker", "type": "command", "when": "${launch_rosbot}", "on_failure": "continue", "agent_id": "${robot_id}",        "component_id": "exec", "action": "run",  "timeout_s": 30, "params": { "command": "ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${robot_host} 'docker compose -f ${compose_file} down'" } },
+        { "name": "stop-rosserial",     "type": "command", "when": "${launch_rosbot}", "on_failure": "continue", "agent_id": "${robot_id}",        "component_id": "exec", "action": "kill", "timeout_s": 15, "params": { "name": "rosserial" } }
       ]
     }
   ]

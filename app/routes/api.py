@@ -746,13 +746,16 @@ def rotate_password(username: str, request: Request):
 
 
 @router.get("/auth-log")
-def auth_log(limit: int = 200):
+def auth_log(limit: int = 200, denied_only: bool = True):
+    """Return MQTT auth/authz log entries. Defaults to denied entries only."""
+    where_authn = "WHERE result NOT IN ('success', 'allow', 'ok')" if denied_only else ""
     with DB.connect() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                """
+                f"""
                 SELECT ts, 'authn' AS type, username, clientid, NULL::text AS topic, NULL::text AS action, result
                 FROM authn_log
+                {where_authn}
                 UNION ALL
                 SELECT ts, 'authz' AS type, username, clientid, topic, action, result
                 FROM authz_denied
