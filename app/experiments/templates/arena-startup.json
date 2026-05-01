@@ -5,7 +5,6 @@
   "description": "Full arena bringup: pings all agents, powers on projectors with NDI streams, launches TouchDesigner and Arena overlay, and signals ready on the LED strip.",
   "tags": ["foraging", "setup"],
   "parameters": {
-    "south_agent_id":   { "type": "string",  "default": "south",                          "required": true,  "description": "Agent ID for the south projector node" },
     "north_agent_id":   { "type": "string",  "default": "north",                          "required": true,  "description": "Agent ID for the north projector node" },
     "east_agent_id":    { "type": "string",  "default": "east",                           "required": true,  "description": "Agent ID for the east projector node" },
     "west_agent_id":    { "type": "string",  "default": "west",                           "required": true,  "description": "Agent ID for the west projector node" },
@@ -14,13 +13,21 @@
     "socrates_agent_id":{ "type": "string",  "default": "socrates",                       "required": true,  "description": "Agent ID running the viz component" },
     "led_agent_id":     { "type": "string",  "default": "led_truss",                      "required": true,  "description": "Agent ID hosting the LED strip component" },
     "camera_agent_id":  { "type": "string",  "default": "camera",                         "required": false, "description": "Agent ID hosting the camera component" },
-    "ndi_source_south": { "type": "string",  "default": "ROBOTICSS-MAC-PRO.LOCAL (south)","required": false, "description": "NDI source name for the south projector" },
     "ndi_source_north": { "type": "string",  "default": "ROBOTICSS-MAC-PRO.LOCAL (north)","required": false, "description": "NDI source name for the north projector" },
     "ndi_source_east":  { "type": "string",  "default": "ROBOTICSS-MAC-PRO.LOCAL (east)", "required": false, "description": "NDI source name for the east projector" },
     "ndi_source_west":  { "type": "string",  "default": "ROBOTICSS-MAC-PRO.LOCAL (west)", "required": false, "description": "NDI source name for the west projector" },
     "room_brightness":  { "type": "integer", "default": 1,                                "required": false, "description": "Room light brightness 0-100" },
     "ping_timeout_s":        { "type": "float",   "default": 10.0, "required": false, "description": "Seconds to wait for each preflight ping" },
-    "projector_warmup_s":    { "type": "float",   "default": 0.0,  "required": false, "description": "Seconds to wait after powering on projectors before starting NDI (0 = no delay)" }
+    "projector_warmup_s":    { "type": "float",   "default": 0.0,  "required": false, "description": "Seconds to wait after powering on projectors before starting NDI (0 = no delay)" },
+    "arena_anchor_corner":   { "type": "string", "default": "BL",                  "required": false, "description": "Which arena corner is anchored in OptiTrack (TL/TR/BR/BL)" },
+    "arena_anchor_x":        { "type": "float",  "default": 3.292316246032715,     "required": false, "description": "Anchor corner X in OptiTrack frame" },
+    "arena_anchor_y":        { "type": "float",  "default": 2.127694296836853,     "required": false, "description": "Anchor corner Y in OptiTrack frame" },
+    "goal_x":                { "type": "float",  "default": 2.992316246032715,     "required": false, "description": "Robot start X (OptiTrack frame)" },
+    "goal_y":                { "type": "float",  "default": 1.827694296836853,     "required": false, "description": "Robot start Y (OptiTrack frame)" },
+    "goal_qx":               { "type": "float",  "default": -0.00494308490306139,  "required": false, "description": "Robot start orientation qx" },
+    "goal_qy":               { "type": "float",  "default": -0.011712746694684029, "required": false, "description": "Robot start orientation qy" },
+    "goal_qz":               { "type": "float",  "default": -0.9295409917831421,   "required": false, "description": "Robot start orientation qz" },
+    "goal_qw":               { "type": "float",  "default": 0.3684997856616974,    "required": false, "description": "Robot start orientation qw" }
   },
   "steps": [
     {
@@ -40,7 +47,6 @@
       "on_failure": "abort",
       "template_id": "ping-agents",
       "template_params": {
-        "south_agent_id":    "${south_agent_id}",
         "north_agent_id":    "${north_agent_id}",
         "east_agent_id":     "${east_agent_id}",
         "west_agent_id":     "${west_agent_id}",
@@ -58,11 +64,9 @@
       "on_failure": "abort",
       "template_id": "projector-ndi-connect",
       "template_params": {
-        "south_agent_id":   "${south_agent_id}",
         "north_agent_id":   "${north_agent_id}",
         "east_agent_id":    "${east_agent_id}",
         "west_agent_id":    "${west_agent_id}",
-        "ndi_source_south": "${ndi_source_south}",
         "ndi_source_north": "${ndi_source_north}",
         "ndi_source_east":  "${ndi_source_east}",
         "ndi_source_west":  "${ndi_source_west}",
@@ -75,9 +79,18 @@
       "on_failure": "abort",
       "template_id": "arena-td-launch",
       "template_params": {
-        "socrates_agent_id": "${socrates_agent_id}",
-        "hydra_agent_id":    "${hydra_agent_id}",
-        "room_brightness":   "${room_brightness}"
+        "socrates_agent_id":   "${socrates_agent_id}",
+        "hydra_agent_id":      "${hydra_agent_id}",
+        "room_brightness":     "${room_brightness}",
+        "arena_anchor_corner": "${arena_anchor_corner}",
+        "arena_anchor_x":      "${arena_anchor_x}",
+        "arena_anchor_y":      "${arena_anchor_y}",
+        "goal_x":  "${goal_x}",
+        "goal_y":  "${goal_y}",
+        "goal_qx": "${goal_qx}",
+        "goal_qy": "${goal_qy}",
+        "goal_qz": "${goal_qz}",
+        "goal_qw": "${goal_qw}"
       }
     }
   ]

@@ -17,8 +17,12 @@
     "launch_camera":               { "type": "boolean", "default": false,                             "required": false, "description": "Start camera roscore, ros_bridge, camera" },
     "launch_socrates":             { "type": "boolean", "default": false,                             "required": false, "description": "Create viz topic links" },
     "launch_led":                  { "type": "boolean", "default": true,                              "required": false, "description": "Show LED transitions" },
+    "launch_scan":                 { "type": "boolean", "default": false,                             "required": false, "description": "Forward /scan lidar telemetry at 1 Hz; can also be toggled mid-run via scan-telemetry-toggle" },
     "robot_host":                  { "type": "string",  "default": "husarion@10.205.3.20",            "required": false, "description": "SSH target for ROSbot" },
     "compose_file":                { "type": "string",  "default": "compose_farah.yaml",              "required": false, "description": "Docker compose file on ROSbot" },
+    "arena_anchor_corner":         { "type": "string",  "default": "BL",                              "required": false, "description": "Which arena corner is anchored in OptiTrack (TL/TR/BR/BL)" },
+    "arena_anchor_x":              { "type": "float",   "default": 3.292316246032715,                 "required": false, "description": "Anchor corner X in OptiTrack frame" },
+    "arena_anchor_y":              { "type": "float",   "default": 2.127694296836853,                 "required": false, "description": "Anchor corner Y in OptiTrack frame" },
     "goal_x":                      { "type": "float",   "default": 2.992316246032715,                 "required": false, "description": "Start X (OptiTrack frame)" },
     "goal_y":                      { "type": "float",   "default": 1.827694296836853,                 "required": false, "description": "Start Y (OptiTrack frame)" },
     "goal_qx":                     { "type": "float",   "default": -0.00494308490306139,              "required": false, "description": "Start orientation quaternion X" },
@@ -57,7 +61,16 @@
         "launch_camera": "${launch_camera}",
         "launch_led": "${launch_led}",
         "robot_host": "${robot_host}",
-        "compose_file": "${compose_file}"
+        "compose_file": "${compose_file}",
+        "arena_anchor_corner": "${arena_anchor_corner}",
+        "arena_anchor_x": "${arena_anchor_x}",
+        "arena_anchor_y": "${arena_anchor_y}",
+        "goal_x": "${goal_x}",
+        "goal_y": "${goal_y}",
+        "goal_qx": "${goal_qx}",
+        "goal_qy": "${goal_qy}",
+        "goal_qz": "${goal_qz}",
+        "goal_qw": "${goal_qw}"
       }
     },
 
@@ -121,6 +134,7 @@
         "launch_camera": "${launch_camera}",
         "launch_socrates": "${launch_socrates}",
         "launch_led": "${launch_led}",
+        "launch_scan": "${launch_scan}",
         "robot_host": "${robot_host}",
         "compose_file": "${compose_file}",
         "roslaunch_package": "${roslaunch_package}",
