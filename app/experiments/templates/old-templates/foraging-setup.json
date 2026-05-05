@@ -22,12 +22,12 @@
     "arena_anchor_corner":{ "type": "string",  "default": "TR",                              "required": false, "description": "Which arena corner is anchored in OptiTrack (TL/TR/BR/BL)" },
     "arena_anchor_x":     { "type": "float",   "default": -0.03,                             "required": false, "description": "Anchor corner X in OptiTrack frame" },
     "arena_anchor_y":     { "type": "float",   "default": 0.10,                              "required": false, "description": "Anchor corner Y in OptiTrack frame" },
-    "goal_x":             { "type": "float",   "default": 2.992316246032715,                 "required": false, "description": "Robot start X (OptiTrack frame)" },
-    "goal_y":             { "type": "float",   "default": 1.827694296836853,                 "required": false, "description": "Robot start Y (OptiTrack frame)" },
-    "goal_qx":            { "type": "float",   "default": -0.00494308490306139,              "required": false, "description": "Robot start orientation qx" },
-    "goal_qy":            { "type": "float",   "default": -0.011712746694684029,             "required": false, "description": "Robot start orientation qy" },
-    "goal_qz":            { "type": "float",   "default": -0.9295409917831421,               "required": false, "description": "Robot start orientation qz" },
-    "goal_qw":            { "type": "float",   "default": 0.3684997856616974,                "required": false, "description": "Robot start orientation qw" }
+    "goal_x":             { "type": "float",   "default": 1.8313400745391846,                 "required": false, "description": "Robot start X (OptiTrack frame)" },
+    "goal_y":             { "type": "float",   "default": 1.9327030181884766,                 "required": false, "description": "Robot start Y (OptiTrack frame)" },
+    "goal_qx":            { "type": "float",   "default": 0.06450924277305603,              "required": false, "description": "Robot start orientation qx" },
+    "goal_qy":            { "type": "float",   "default": 0.0404166504740715,             "required": false, "description": "Robot start orientation qy" },
+    "goal_qz":            { "type": "float",   "default": -0.9158637523651123,               "required": false, "description": "Robot start orientation qz" },
+    "goal_qw":            { "type": "float",   "default": 0.3942064046859741,                "required": false, "description": "Robot start orientation qw" }
   },
   "steps": [
     {

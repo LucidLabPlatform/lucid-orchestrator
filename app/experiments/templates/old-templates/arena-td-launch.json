@@ -5,9 +5,18 @@
   "description": "Launches TouchDesigner and the Arena overlay on socrates, then dims room lights.",
   "tags": ["setup", "arena", "touchdesigner"],
   "parameters": {
-    "socrates_agent_id": { "type": "string", "default": "socrates", "required": true,  "description": "Agent ID running the viz component (TouchDesigner + Arena overlay)" },
-    "hydra_agent_id":    { "type": "string", "default": "hydra",    "required": true,  "description": "Agent ID for the Hydra node (hosts KNX lighting component)" },
-    "room_brightness":   { "type": "integer","default": 1,          "required": false, "description": "Room light brightness 0-100 (1 = dim for experiments)" }
+    "socrates_agent_id":   { "type": "string", "default": "socrates", "required": true,  "description": "Agent ID running the viz component (TouchDesigner + Arena overlay)" },
+    "hydra_agent_id":      { "type": "string", "default": "hydra",    "required": true,  "description": "Agent ID for the Hydra node (hosts KNX lighting component)" },
+    "room_brightness":     { "type": "integer","default": 1,          "required": false, "description": "Room light brightness 0-100 (1 = dim for experiments)" },
+    "arena_anchor_corner": { "type": "string", "default": "TR",                          "required": false, "description": "Which arena corner is anchored in OptiTrack (TL/TR/BR/BL)" },
+    "arena_anchor_x":      { "type": "float",  "default": -0.03,                         "required": false, "description": "Anchor corner X in OptiTrack frame" },
+    "arena_anchor_y":      { "type": "float",  "default": 0.10,                          "required": false, "description": "Anchor corner Y in OptiTrack frame" },
+    "goal_x":              { "type": "float",  "default": 1.8313400745391846,             "required": false, "description": "Robot start X (OptiTrack frame)" },
+    "goal_y":              { "type": "float",  "default": 1.9327030181884766,             "required": false, "description": "Robot start Y (OptiTrack frame)" },
+    "goal_qx":             { "type": "float",  "default": 0.06450924277305603,          "required": false, "description": "Robot start orientation qx" },
+    "goal_qy":             { "type": "float",  "default": 0.0404166504740715,         "required": false, "description": "Robot start orientation qy" },
+    "goal_qz":             { "type": "float",  "default": -0.9158637523651123,           "required": false, "description": "Robot start orientation qz" },
+    "goal_qw":             { "type": "float",  "default": 0.3942064046859741,            "required": false, "description": "Robot start orientation qw" }
   },
   "steps": [
     {
@@ -30,7 +39,17 @@
       "component_id": "viz",
       "action": "start_arena",
       "timeout_s": 20,
-      "params": {}
+      "params": {
+        "arena_anchor_corner": "${arena_anchor_corner}",
+        "arena_anchor_x":      "${arena_anchor_x}",
+        "arena_anchor_y":      "${arena_anchor_y}",
+        "goal_x":  "${goal_x}",
+        "goal_y":  "${goal_y}",
+        "goal_qx": "${goal_qx}",
+        "goal_qy": "${goal_qy}",
+        "goal_qz": "${goal_qz}",
+        "goal_qw": "${goal_qw}"
+      }
     },
     {
       "name": "set_room_lights",

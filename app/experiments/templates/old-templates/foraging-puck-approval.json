@@ -9,7 +9,7 @@
     "launch_led":   { "type": "boolean", "default": true,        "required": false, "description": "Show LED waiting animation" }
   },
   "steps": [
-    { "name": "led-waiting-for-pucks", "type": "command", "when": "${launch_led}", "on_failure": "continue", "agent_id": "${led_agent_id}", "component_id": "led_strip", "action": "effect/theater-chase", "timeout_s": 10, "params": {} },
+    { "name": "led-waiting-for-pucks", "type": "command", "when": "${launch_led}", "on_failure": "continue", "agent_id": "${led_agent_id}", "component_id": "led_strip", "action": "effect/theater-chase", "timeout_s": 10, "params": { "color": { "r": 255, "g": 150, "b": 0 } } },
     { "name": "approve-puck-placement", "type": "approval", "on_failure": "abort", "message": "Place pucks in the arena, then approve to start foraging.", "timeout_s": 600 }
   ]
 }

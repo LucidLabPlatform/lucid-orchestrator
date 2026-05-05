@@ -1,0 +1,68 @@
+{
+  "id": "ros-bringup",
+  "name": "ROS Bringup",
+  "version": "1.0.0",
+  "description": "Ensures roscore is running on the target agent, ensures ros_bridge is active, and starts (or restarts) a roslaunch. Does not enable telemetry, create topic links, or start rosbags.",
+  "tags": ["bringup", "ros"],
+  "parameters": {
+    "agent_id":          { "type": "string", "required": true,  "description": "Agent hosting roscore + ros_bridge" },
+    "roslaunch_package": { "type": "string", "required": true,  "description": "ROS package containing the launch file" },
+    "roslaunch_file":    { "type": "string", "required": true,  "description": "Launch file name" },
+    "roslaunch_args":    { "type": "object", "default": {},     "required": false, "description": "{key: value} map; emitted as key:=value arg list" },
+    "roscore_command":   { "type": "string", "default": "source /opt/ros/noetic/setup.bash && roscore", "required": false, "description": "Shell command for exec.spawn" },
+    "roscore_settle_s":  { "type": "float",  "default": 10.0,   "required": false, "description": "Wait after spawning roscore" },
+    "sensor_settle_s":   { "type": "float",  "default": 10.0,   "required": false, "description": "Wait after roslaunch-start for nodes to come up" }
+  },
+  "steps": [
+    {
+      "name": "ensure-roscore",
+      "type": "command",
+      "on_failure": "continue",
+      "agent_id": "${agent_id}",
+      "component_id": "exec",
+      "action": "spawn",
+      "timeout_s": 15,
+      "params": { "name": "roscore", "command": "${roscore_command}" }
+    },
+    {
+      "name": "wait-for-roscore",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": "${roscore_settle_s}"
+    },
+    {
+      "name": "start-ros-bridge",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 1,
+      "agent_id": "${agent_id}",
+      "component_id": "ros_bridge",
+      "action": "start_ros",
+      "timeout_s": 30,
+      "params": {}
+    },
+    {
+      "name": "start-roslaunch",
+      "type": "command",
+      "on_failure": "abort",
+      "retries": 1,
+      "agent_id": "${agent_id}",
+      "component_id": "ros_bridge",
+      "action": "roslaunch-start",
+      "timeout_s": 30,
+      "params": {
+        "data": {
+          "package": "${roslaunch_package}",
+          "launch_file": "${roslaunch_file}",
+          "args": "${roslaunch_args}"
+        }
+      }
+    },
+    {
+      "name": "wait-for-sensor",
+      "type": "delay",
+      "on_failure": "abort",
+      "duration_s": "${sensor_settle_s}"
+    }
+  ]
+}

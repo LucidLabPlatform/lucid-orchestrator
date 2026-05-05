@@ -1,0 +1,182 @@
+{
+  "id": "topic-links-test",
+  "name": "Topic Links Test (mock telemetry)",
+  "version": "1.0.0",
+  "description": "Creates the foraging LED + viz topic-links (incl. optitrack), waits for the mock_rosbot_agent script to publish reset/foraging telemetry, then tears the links down. No commands are sent to the rosbot agent \u2014 every advancement is driven by telemetry from the mock script.",
+  "tags": ["foraging", "test", "topic-links", "mock"],
+  "parameters": {
+    "robot_id":             { "type": "string", "default": "rosbot",     "required": false, "description": "Source agent ID for the mock telemetry" },
+    "hydra_agent_id":       { "type": "string", "default": "hydra",      "required": false, "description": "Real agent publishing OptiTrack telemetry" },
+    "led_agent_id":         { "type": "string", "default": "led_truss",  "required": false, "description": "LED strip target agent" },
+    "socrates_agent_id":    { "type": "string", "default": "socrates",   "required": false, "description": "Viz target agent" },
+    "reset_timeout_s":      { "type": "float",  "default": 60.0,         "required": false, "description": "Max seconds to wait for reset_status.state=success" },
+    "foraging_timeout_s":   { "type": "float",  "default": 300.0,        "required": false, "description": "Max seconds to wait for foraging_status.state in [completed,error]" }
+  },
+  "steps": [
+    {
+      "name": "create-links",
+      "type": "parallel",
+      "on_failure": "abort",
+      "steps": [
+        {
+          "name": "link-foraging-mode-to-led",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/foraging_status",
+          "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",
+          "select_clause": "CASE payload.value.mode WHEN 0 THEN 0 WHEN 1 THEN 255 WHEN 2 THEN 0 ELSE 255 END as r, CASE payload.value.mode WHEN 0 THEN 0 WHEN 1 THEN 255 WHEN 2 THEN 255 ELSE 0 END as g, CASE payload.value.mode WHEN 0 THEN 255 WHEN 1 THEN 0 WHEN 2 THEN 0 ELSE 0 END as b",
+          "payload_template": "{\"color\": {\"r\": ${r}, \"g\": ${g}, \"b\": ${b}}}",
+          "qos": 0
+        },
+        {
+          "name": "link-reset-distance-to-led",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/reset_status",
+          "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-range-percent",
+          "select_clause": "1.0 - payload.value.pos_error / 3.0 as end_pct",
+          "payload_template": "{\"color\": {\"r\": 0, \"g\": 255, \"b\": 0}, \"start_percent\": 0.0, \"end_percent\": ${end_pct}}",
+          "qos": 0
+        },
+        {
+          "name": "link-puck-registry-to-viz",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/puck_registry",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/cmd/puck_registry",
+          "select_clause": "payload.value as value",
+          "payload_template": "{\"value\": ${value}}",
+          "qos": 0
+        },
+        {
+          "name": "link-aruco-to-viz",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_confirmed",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/cmd/aruco_confirmed",
+          "select_clause": "payload.value.marker_id as marker_id, payload.value.x as x, payload.value.y as y",
+          "payload_template": "{\"marker_id\": ${marker_id}, \"x\": ${x}, \"y\": ${y}}",
+          "qos": 0
+        },
+        {
+          "name": "link-odom-to-viz",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "operation": "create",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/odom",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/cmd/robot_pose",
+          "select_clause": "payload.value.pose.pose.position.x as px, payload.value.pose.pose.position.y as py, payload.value.pose.pose.orientation.x as ox, payload.value.pose.pose.orientation.y as oy, payload.value.pose.pose.orientation.z as oz, payload.value.pose.pose.orientation.w as ow",
+          "payload_template": "{\"value\": {\"pose\": {\"position\": {\"x\": ${px}, \"y\": ${py}}, \"orientation\": {\"x\": ${ox}, \"y\": ${oy}, \"z\": ${oz}, \"w\": ${ow}}}}}",
+          "qos": 0
+        },
+        {
+          "name": "link-optitrack-pose-to-viz",
+          "type": "topic_link",
+          "on_failure": "abort",
+          "operation": "create",
+          "source_topic": "lucid/agents/${hydra_agent_id}/components/ros_bridge/telemetry/natnet_ros_umh_6_pose",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/cmd/robot_pose",
+          "select_clause": "payload.value.pose.position.x as px, payload.value.pose.position.y as py, payload.value.pose.position.z as pz, payload.value.pose.orientation.x as ox, payload.value.pose.orientation.y as oy, payload.value.pose.orientation.z as oz, payload.value.pose.orientation.w as ow",
+          "payload_template": "{\"value\": {\"pose\": {\"position\": {\"x\": ${px}, \"y\": ${py}, \"z\": ${pz}}, \"orientation\": {\"x\": ${ox}, \"y\": ${oy}, \"z\": ${oz}, \"w\": ${ow}}}}}",
+          "qos": 0
+        }
+      ]
+    },
+
+    {
+      "name": "wait-for-reset-success",
+      "type": "wait_for_condition",
+      "on_failure": "continue",
+      "agent_id": "${robot_id}",
+      "component_id": "ros_bridge",
+      "telemetry_metric": "reset_status",
+      "condition": { "field": "value.state", "equals": "success" },
+      "timeout_s": "${reset_timeout_s}",
+      "on_timeout": "continue"
+    },
+
+    {
+      "name": "wait-for-foraging-complete",
+      "type": "wait_for_condition",
+      "on_failure": "continue",
+      "agent_id": "${robot_id}",
+      "component_id": "ros_bridge",
+      "telemetry_metric": "foraging_status",
+      "condition": { "field": "value.state", "in": ["completed", "error"] },
+      "timeout_s": "${foraging_timeout_s}",
+      "on_timeout": "continue"
+    },
+
+    {
+      "name": "delete-links",
+      "type": "parallel",
+      "on_failure": "continue",
+      "steps": [
+        {
+          "name": "remove-link-foraging-mode-to-led",
+          "type": "topic_link",
+          "on_failure": "continue",
+          "operation": "delete",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/foraging_status",
+          "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",
+          "select_clause": "*",
+          "qos": 0
+        },
+        {
+          "name": "remove-link-reset-distance-to-led",
+          "type": "topic_link",
+          "on_failure": "continue",
+          "operation": "delete",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/reset_status",
+          "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-range-percent",
+          "select_clause": "*",
+          "qos": 0
+        },
+        {
+          "name": "remove-link-puck-registry-to-viz",
+          "type": "topic_link",
+          "on_failure": "continue",
+          "operation": "delete",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/puck_registry",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/cmd/puck_registry",
+          "select_clause": "*",
+          "qos": 0
+        },
+        {
+          "name": "remove-link-aruco-to-viz",
+          "type": "topic_link",
+          "on_failure": "continue",
+          "operation": "delete",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/aruco_confirmed",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/cmd/aruco_confirmed",
+          "select_clause": "*",
+          "qos": 0
+        },
+        {
+          "name": "remove-link-odom-to-viz",
+          "type": "topic_link",
+          "on_failure": "continue",
+          "operation": "delete",
+          "source_topic": "lucid/agents/${robot_id}/components/ros_bridge/telemetry/odom",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/cmd/robot_pose",
+          "select_clause": "*",
+          "qos": 0
+        },
+        {
+          "name": "remove-link-optitrack-pose-to-viz",
+          "type": "topic_link",
+          "on_failure": "continue",
+          "operation": "delete",
+          "source_topic": "lucid/agents/${hydra_agent_id}/components/ros_bridge/telemetry/natnet_ros_umh_6_pose",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/cmd/robot_pose",
+          "select_clause": "*",
+          "qos": 0
+        }
+      ]
+    }
+  ]
+}

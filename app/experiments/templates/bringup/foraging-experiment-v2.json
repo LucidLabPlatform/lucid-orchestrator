@@ -1,0 +1,277 @@
+{
+  "id": "foraging-experiment-v2",
+  "name": "Foraging Experiment (v2)",
+  "version": "1.0.0",
+  "description": "Top-level foraging experiment using the v2 bringup sub-templates. Optionally runs always-on services bringup, always restarts the arena on viz, then chains rosbot-bringup \u2192 foraging-reset-v2 \u2192 puck approval \u2192 rosbot-bringup (with rosserial) \u2192 foraging-run-v2. Agent ids are not exposed (sub-templates use their own defaults).",
+  "tags": [
+    "bringup",
+    "foraging",
+    "experiment"
+  ],
+  "parameters": {
+    "launch_startup": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Run foraging-startup (chrony, projection, camera, optitrack, LED). Skip on warm sessions where services are already up."
+    },
+    "restart_docker": {
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "description": "Force a docker restart in the first rosbot-bringup call (kill spawn + compose down before bringing it back up)"
+    },
+    "launch_rosbot": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Enable rosbot_pc telemetry, recording, and roslaunches in reset and run"
+    },
+    "launch_hydra": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Enable hydra OptiTrack telemetry and recording"
+    },
+    "launch_camera": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Record camera rosbags during reset and run"
+    },
+    "launch_socrates": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Create viz topic links during run (puck/aruco/odom/optitrack pose)"
+    },
+    "launch_led": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Drive LED truss colour and effects throughout"
+    },
+    "arena_anchor_corner": {
+      "type": "string",
+      "default": "TR",
+      "required": false,
+      "description": "Which arena corner is anchored in OptiTrack (TL/TR/BR/BL)"
+    },
+    "arena_anchor_x": {
+      "type": "float",
+      "default": -0.03,
+      "required": false,
+      "description": "Anchor corner X in OptiTrack frame"
+    },
+    "arena_anchor_y": {
+      "type": "float",
+      "default": 0.1,
+      "required": false,
+      "description": "Anchor corner Y in OptiTrack frame"
+    },
+    "goal_x": {
+      "type": "float",
+      "default": 1.8313400745391846,
+      "required": false,
+      "description": "Reset goal X (OptiTrack frame)"
+    },
+    "goal_y": {
+      "type": "float",
+      "default": 1.9327030181884766,
+      "required": false,
+      "description": "Reset goal Y (OptiTrack frame)"
+    },
+    "goal_qx": {
+      "type": "float",
+      "default": 0.06450924277305603,
+      "required": false,
+      "description": "Goal orientation quaternion X"
+    },
+    "goal_qy": {
+      "type": "float",
+      "default": 0.0404166504740715,
+      "required": false,
+      "description": "Goal orientation quaternion Y"
+    },
+    "goal_qz": {
+      "type": "float",
+      "default": -0.9158637523651123,
+      "required": false,
+      "description": "Goal orientation quaternion Z"
+    },
+    "goal_qw": {
+      "type": "float",
+      "default": 0.3942064046859741,
+      "required": false,
+      "description": "Goal orientation quaternion W"
+    },
+    "pos_tolerance": {
+      "type": "float",
+      "default": 0.1,
+      "required": false,
+      "description": "Reset position tolerance (m)"
+    },
+    "yaw_tolerance": {
+      "type": "float",
+      "default": 0.15,
+      "required": false,
+      "description": "Reset yaw tolerance (rad)"
+    },
+    "num_pucks": {
+      "type": "string",
+      "default": "3",
+      "required": false,
+      "description": "Number of pucks (foraging launch arg)"
+    },
+    "step_size": {
+      "type": "string",
+      "default": "0.5",
+      "required": false,
+      "description": "Random walk step size (m)"
+    },
+    "walk_sigma": {
+      "type": "string",
+      "default": "0.5",
+      "required": false,
+      "description": "Random walk yaw sigma"
+    },
+    "max_vel_x": {
+      "type": "string",
+      "default": "0.2",
+      "required": false,
+      "description": "Max forward velocity (m/s)"
+    },
+    "explore_puck_pct": {
+      "type": "float",
+      "default": 0.5,
+      "required": false,
+      "description": "Fraction of explore time spent on pucks"
+    },
+    "explore_corner_pct": {
+      "type": "float",
+      "default": 0.4,
+      "required": false,
+      "description": "Fraction of explore time spent on corners"
+    },
+    "open_rviz": {
+      "type": "string",
+      "default": "false",
+      "required": false,
+      "description": "Whether to open rviz on the rosbot"
+    },
+    "wait_timeout_s_reset": {
+      "type": "float",
+      "default": 60.0,
+      "required": false,
+      "description": "Max seconds for reset_status.state == 'success'"
+    },
+    "wait_timeout_s_run": {
+      "type": "float",
+      "default": 600.0,
+      "required": false,
+      "description": "Max seconds for foraging_status.state in {completed, error}"
+    }
+  },
+  "steps": [
+    {
+      "name": "foraging-startup",
+      "type": "template",
+      "when": "${launch_startup}",
+      "on_failure": "abort",
+      "template_id": "foraging-startup",
+      "template_params": {}
+    },
+    {
+      "name": "restart-arena",
+      "type": "command",
+      "on_failure": "abort",
+      "agent_id": "socrates",
+      "component_id": "viz",
+      "action": "start_arena",
+      "timeout_s": 30,
+      "params": {
+        "arena_anchor_corner": "${arena_anchor_corner}",
+        "arena_anchor_x": "${arena_anchor_x}",
+        "arena_anchor_y": "${arena_anchor_y}",
+        "goal_x": "${goal_x}",
+        "goal_y": "${goal_y}",
+        "goal_qx": "${goal_qx}",
+        "goal_qy": "${goal_qy}",
+        "goal_qz": "${goal_qz}",
+        "goal_qw": "${goal_qw}"
+      }
+    },
+    {
+      "name": "rosbot-bringup-no-rosserial",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "rosbot-bringup",
+      "template_params": {
+        "restart_docker": "${restart_docker}",
+        "launch_rosserial": false
+      }
+    },
+    {
+      "name": "foraging-reset",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "foraging-reset-v2",
+      "template_params": {
+        "launch_rosbot": "${launch_rosbot}",
+        "launch_hydra": "${launch_hydra}",
+        "launch_camera": "${launch_camera}",
+        "launch_led": "${launch_led}",
+        "goal_x": "${goal_x}",
+        "goal_y": "${goal_y}",
+        "goal_qx": "${goal_qx}",
+        "goal_qy": "${goal_qy}",
+        "goal_qz": "${goal_qz}",
+        "goal_qw": "${goal_qw}",
+        "pos_tolerance": "${pos_tolerance}",
+        "yaw_tolerance": "${yaw_tolerance}",
+        "wait_timeout_s": "${wait_timeout_s_reset}"
+      }
+    },
+    {
+      "name": "puck-approval",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "foraging-puck-approval",
+      "template_params": {
+        "launch_led": "${launch_led}"
+      }
+    },
+    {
+      "name": "rosbot-bringup-with-rosserial",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "rosbot-bringup",
+      "template_params": {
+        "restart_docker": true,
+        "restart_ros_bridge": true,
+        "launch_rosserial": true
+      }
+    },
+    {
+      "name": "foraging-run",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "foraging-run-v2",
+      "template_params": {
+        "launch_rosbot": "${launch_rosbot}",
+        "launch_hydra": "${launch_hydra}",
+        "launch_camera": "${launch_camera}",
+        "launch_socrates": "${launch_socrates}",
+        "launch_led": "${launch_led}",
+        "num_pucks": "${num_pucks}",
+        "step_size": "${step_size}",
+        "walk_sigma": "${walk_sigma}",
+        "max_vel_x": "${max_vel_x}",
+        "explore_puck_pct": "${explore_puck_pct}",
+        "explore_corner_pct": "${explore_corner_pct}",
+        "open_rviz": "${open_rviz}",
+        "wait_timeout_s": "${wait_timeout_s_run}"
+      }
+    }
+  ]
+}

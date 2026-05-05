@@ -1,0 +1,121 @@
+{
+  "id": "foraging-startup",
+  "name": "Foraging Startup",
+  "version": "1.0.0",
+  "description": "Brings up the always-on services for foraging: chrony sync on hydra and rosbot-pc, projection (projectors + NDI + TouchDesigner), camera, and optitrack — all in parallel. Per-trial concerns (rosbot, reset, foraging launch, teardowns) live in separate templates.",
+  "tags": ["bringup", "foraging", "startup"],
+  "parameters": {
+    "hydra_agent_id":     { "type": "string", "default": "hydra",                          "required": false, "description": "Hydra agent (chrony + OptiTrack)" },
+    "rosbot_pc_agent_id": { "type": "string", "default": "rosbot_pc",                      "required": false, "description": "ROSbot Pi agent (chrony)" },
+    "camera_agent_id":    { "type": "string", "default": "camera",                         "required": false, "description": "Camera agent" },
+    "north_agent_id":     { "type": "string", "default": "north",                          "required": false, "description": "North projector agent" },
+    "east_agent_id":      { "type": "string", "default": "east",                           "required": false, "description": "East projector agent" },
+    "west_agent_id":      { "type": "string", "default": "west",                           "required": false, "description": "West projector agent" },
+    "socrates_agent_id":  { "type": "string", "default": "socrates",                       "required": false, "description": "Viz agent (TouchDesigner host)" },
+    "led_agent_id":       { "type": "string", "default": "led_truss",                      "required": false, "description": "LED truss agent (visual startup indicator)" },
+    "ndi_source_north":   { "type": "string", "default": "ROBOTICSS-MAC-PRO.LOCAL (north)","required": false, "description": "NDI source name for north" },
+    "ndi_source_east":    { "type": "string", "default": "ROBOTICSS-MAC-PRO.LOCAL (east)", "required": false, "description": "NDI source name for east" },
+    "ndi_source_west":    { "type": "string", "default": "ROBOTICSS-MAC-PRO.LOCAL (west)", "required": false, "description": "NDI source name for west" },
+    "projector_warmup_s": { "type": "float",  "default": 0.0,                              "required": false, "description": "Wait after powering on projectors before NDI receive" },
+    "roscore_settle_s":   { "type": "float",  "default": 10.0,                             "required": false, "description": "Shared roscore settle delay for camera and optitrack bringups" },
+    "sensor_settle_s":    { "type": "float",  "default": 10.0,                             "required": false, "description": "Shared sensor settle delay for camera and optitrack bringups" },
+    "room_brightness":    { "type": "integer","default": 1,                                "required": false, "description": "KNX 'Experiments light' brightness 0-100 (1 = dim for experiments)" }
+  },
+  "steps": [
+    {
+      "name": "startup-services",
+      "type": "parallel",
+      "on_failure": "abort",
+      "steps": [
+        {
+          "name": "led-startup-glow",
+          "type": "command",
+          "on_failure": "continue",
+          "agent_id": "${led_agent_id}",
+          "component_id": "led_strip",
+          "action": "effect/glow",
+          "timeout_s": 10,
+          "params": { "color": { "r": 255, "g": 150, "b": 0 }, "wait_ms": 25 }
+        },
+        {
+          "name": "dim-room-lights",
+          "type": "command",
+          "on_failure": "continue",
+          "agent_id": "${hydra_agent_id}",
+          "component_id": "knx",
+          "action": "light/brightness/set",
+          "timeout_s": 10,
+          "params": { "light": "Experiments light", "brightness": "${room_brightness}" }
+        },
+        {
+          "name": "sync-clock-hydra",
+          "type": "command",
+          "on_failure": "abort",
+          "agent_id": "${hydra_agent_id}",
+          "component_id": "chrony",
+          "action": "start_sync",
+          "timeout_s": 30,
+          "params": {}
+        },
+        {
+          "name": "sync-clock-rosbot-pc",
+          "type": "command",
+          "on_failure": "abort",
+          "agent_id": "${rosbot_pc_agent_id}",
+          "component_id": "chrony",
+          "action": "start_sync",
+          "timeout_s": 30,
+          "params": {}
+        },
+        {
+          "name": "projectors-and-ndi",
+          "type": "template",
+          "on_failure": "abort",
+          "template_id": "projector-ndi-connect",
+          "template_params": {
+            "north_agent_id": "${north_agent_id}",
+            "east_agent_id": "${east_agent_id}",
+            "west_agent_id": "${west_agent_id}",
+            "ndi_source_north": "${ndi_source_north}",
+            "ndi_source_east": "${ndi_source_east}",
+            "ndi_source_west": "${ndi_source_west}",
+            "projector_warmup_s": "${projector_warmup_s}"
+          }
+        },
+        {
+          "name": "start-touchdesigner",
+          "type": "command",
+          "on_failure": "abort",
+          "retries": 1,
+          "agent_id": "${socrates_agent_id}",
+          "component_id": "viz",
+          "action": "start_touchdesigner",
+          "timeout_s": 30,
+          "params": {}
+        },
+        {
+          "name": "camera",
+          "type": "template",
+          "on_failure": "abort",
+          "template_id": "camera-bringup",
+          "template_params": {
+            "camera_agent_id": "${camera_agent_id}",
+            "roscore_settle_s": "${roscore_settle_s}",
+            "sensor_settle_s": "${sensor_settle_s}"
+          }
+        },
+        {
+          "name": "optitrack",
+          "type": "template",
+          "on_failure": "abort",
+          "template_id": "optitrack-bringup",
+          "template_params": {
+            "hydra_agent_id": "${hydra_agent_id}",
+            "roscore_settle_s": "${roscore_settle_s}",
+            "sensor_settle_s": "${sensor_settle_s}"
+          }
+        }
+      ]
+    }
+  ]
+}

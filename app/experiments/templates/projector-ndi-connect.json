@@ -5,11 +5,9 @@
   "description": "Powers on all four projectors, optionally waits for warmup, then starts NDI receive streams. Set projector_warmup_s > 0 to wait before connecting NDI (projectors take several minutes to fully warm up).",
   "tags": ["setup", "projectors", "ndi"],
   "parameters": {
-    "south_agent_id":   { "type": "string", "default": "south",                          "required": true,  "description": "Agent ID for the south projector node" },
     "north_agent_id":   { "type": "string", "default": "north",                          "required": true,  "description": "Agent ID for the north projector node" },
     "east_agent_id":    { "type": "string", "default": "east",                           "required": true,  "description": "Agent ID for the east projector node" },
     "west_agent_id":    { "type": "string", "default": "west",                           "required": true,  "description": "Agent ID for the west projector node" },
-    "ndi_source_south": { "type": "string", "default": "ROBOTICSS-MAC-PRO.LOCAL (south)","required": false, "description": "NDI source name for the south projector" },
     "ndi_source_north": { "type": "string", "default": "ROBOTICSS-MAC-PRO.LOCAL (north)","required": false, "description": "NDI source name for the north projector" },
     "ndi_source_east":  { "type": "string", "default": "ROBOTICSS-MAC-PRO.LOCAL (east)", "required": false, "description": "NDI source name for the east projector" },
     "ndi_source_west":  { "type": "string", "default": "ROBOTICSS-MAC-PRO.LOCAL (west)", "required": false, "description": "NDI source name for the west projector" },
@@ -22,7 +20,6 @@
       "on_failure": "abort",
       "retries": 0,
       "steps": [
-        { "name": "power_on_south", "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${south_agent_id}", "component_id": "projector", "action": "power/on", "timeout_s": 30, "params": {} },
         { "name": "power_on_north", "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${north_agent_id}", "component_id": "projector", "action": "power/on", "timeout_s": 30, "params": {} },
         { "name": "power_on_east",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${east_agent_id}",  "component_id": "projector", "action": "power/on", "timeout_s": 30, "params": {} },
         { "name": "power_on_west",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${west_agent_id}",  "component_id": "projector", "action": "power/on", "timeout_s": 30, "params": {} }
@@ -40,7 +37,6 @@
       "on_failure": "abort",
       "retries": 0,
       "steps": [
-        { "name": "ndi_south", "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${south_agent_id}", "component_id": "ndi", "action": "receive/start", "timeout_s": 15, "params": { "source": "${ndi_source_south}" } },
         { "name": "ndi_north", "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${north_agent_id}", "component_id": "ndi", "action": "receive/start", "timeout_s": 15, "params": { "source": "${ndi_source_north}" } },
         { "name": "ndi_east",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${east_agent_id}",  "component_id": "ndi", "action": "receive/start", "timeout_s": 15, "params": { "source": "${ndi_source_east}" } },
         { "name": "ndi_west",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${west_agent_id}",  "component_id": "ndi", "action": "receive/start", "timeout_s": 15, "params": { "source": "${ndi_source_west}" } }

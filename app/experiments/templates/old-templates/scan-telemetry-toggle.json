@@ -1,0 +1,24 @@
+{
+  "id": "scan-telemetry-toggle",
+  "name": "Scan Telemetry Toggle",
+  "version": "1.0.0",
+  "description": "Toggle /scan lidar telemetry forwarding on the rosbot ros_bridge mid-experiment. Set enabled=true to start at 1 Hz, false to stop.",
+  "tags": ["foraging", "telemetry"],
+  "parameters": {
+    "robot_id":   { "type": "string",  "default": "rosbot", "required": true,  "description": "ROSbot agent ID" },
+    "enabled":    { "type": "boolean", "default": true,     "required": true,  "description": "Forward /scan telemetry when true, stop forwarding when false" },
+    "interval_s": { "type": "float",   "default": 1.0,      "required": false, "description": "Forwarding interval in seconds (only relevant when enabled=true)" }
+  },
+  "steps": [
+    {
+      "name": "set-scan-telemetry",
+      "type": "command",
+      "on_failure": "abort",
+      "agent_id": "${robot_id}",
+      "component_id": "ros_bridge",
+      "action": "cfg/telemetry/set",
+      "timeout_s": 10,
+      "params": { "set": { "scan": { "enabled": "${enabled}", "interval_s": "${interval_s}", "change_threshold_percent": 0.0 } } }
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "foraging-rviz",
+  "name": "Foraging RViz",
+  "version": "1.0.0",
+  "description": "Spawn an rviz viewer on the rosbot agent host using the foraging rviz config. Independent of the foraging launch — start/stop any time.",
+  "tags": ["foraging", "viz"],
+  "parameters": {
+    "robot_id":      { "type": "string", "default": "rosbot",                                                                            "required": true,  "description": "ROSbot agent ID" },
+    "rviz_config":   { "type": "string", "default": "/home/forfaly/foraging_ws/src/foraging_bringup/rviz/foraging_rviz_config.rviz",      "required": false, "description": "Absolute path to the rviz config file on the agent host" },
+    "display":       { "type": "string", "default": ":1",                                                                                 "required": false, "description": "X11 DISPLAY to render on" },
+    "xauthority":    { "type": "string", "default": "/home/forfaly/.Xauthority",                                                          "required": false, "description": "Path to the Xauthority cookie that grants access to ${display}" },
+    "process_name":  { "type": "string", "default": "rviz_viewer",                                                                        "required": false, "description": "exec component process name (used to kill it later)" }
+  },
+  "steps": [
+    {
+      "name": "kill-old-rviz",
+      "type": "command",
+      "on_failure": "continue",
+      "agent_id": "${robot_id}",
+      "component_id": "exec",
+      "action": "kill",
+      "timeout_s": 10,
+      "params": { "name": "${process_name}" }
+    },
+
+    {
+      "name": "spawn-rviz",
+      "type": "command",
+      "on_failure": "abort",
+      "agent_id": "${robot_id}",
+      "component_id": "exec",
+      "action": "spawn",
+      "timeout_s": 15,
+      "params": {
+        "name": "${process_name}",
+        "command": "rosrun rviz rviz -d ${rviz_config}",
+        "env": {
+          "DISPLAY": "${display}",
+          "XAUTHORITY": "${xauthority}"
+        }
+      }
+    }
+  ]
+}

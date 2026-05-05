@@ -30,7 +30,7 @@
       "type": "parallel",
       "on_failure": "continue",
       "steps": [
-        { "name": "disable-optitrack-telemetry",    "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${hydra_agent_id}", "component_id": "ros_bridge", "action": "cfg/telemetry/set", "timeout_s": 10, "params": { "set": { "optitrack_umh_4": { "enabled": false } } } },
+        { "name": "disable-optitrack-telemetry",    "type": "command", "when": "${launch_hydra}",  "on_failure": "continue", "agent_id": "${hydra_agent_id}", "component_id": "ros_bridge", "action": "cfg/telemetry/set", "timeout_s": 10, "params": { "set": { "optitrack_umh_6": { "enabled": false } } } },
         { "name": "disable-reset-status-telemetry", "type": "command", "when": "${launch_rosbot}", "on_failure": "continue", "agent_id": "${robot_id}",       "component_id": "ros_bridge", "action": "cfg/telemetry/set", "timeout_s": 10, "params": { "set": { "reset_status": { "enabled": false } } } }
       ]
     }

@@ -1,0 +1,23 @@
+{
+  "id": "foraging-rviz-teardown",
+  "name": "Foraging RViz Teardown",
+  "version": "1.0.0",
+  "description": "Kill the rviz viewer spawned by foraging-rviz.",
+  "tags": ["foraging", "viz", "teardown"],
+  "parameters": {
+    "robot_id":     { "type": "string", "default": "rosbot",       "required": true,  "description": "ROSbot agent ID" },
+    "process_name": { "type": "string", "default": "rviz_viewer",  "required": false, "description": "exec component process name to kill" }
+  },
+  "steps": [
+    {
+      "name": "kill-rviz",
+      "type": "command",
+      "on_failure": "continue",
+      "agent_id": "${robot_id}",
+      "component_id": "exec",
+      "action": "kill",
+      "timeout_s": 10,
+      "params": { "name": "${process_name}" }
+    }
+  ]
+}

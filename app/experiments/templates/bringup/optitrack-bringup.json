@@ -1,0 +1,29 @@
+{
+  "id": "optitrack-bringup",
+  "name": "OptiTrack Bringup",
+  "version": "1.0.0",
+  "description": "Brings up OptiTrack on the hydra agent: ensure roscore, ensure ros_bridge, start optitrack_nodes.launch from optitrack_ros_communication. Wraps ros-bringup.",
+  "tags": ["bringup", "ros", "optitrack", "foraging"],
+  "parameters": {
+    "hydra_agent_id":   { "type": "string", "default": "hydra", "required": false, "description": "Agent hosting OptiTrack" },
+    "roslaunch_args":   { "type": "object", "default": { "serverIP": "10.205.3.3", "namespace": "natnet_ros", "clientIP": "10.205.10.254", "serverType": "unicast" }, "required": false, "description": "OptiTrack roslaunch args (IPs and NatNet namespace)" },
+    "roscore_settle_s": { "type": "float",  "default": 10.0,    "required": false, "description": "Wait after spawning roscore" },
+    "sensor_settle_s":  { "type": "float",  "default": 10.0,    "required": false, "description": "Wait after roslaunch-start" }
+  },
+  "steps": [
+    {
+      "name": "optitrack-bringup",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "ros-bringup",
+      "template_params": {
+        "agent_id": "${hydra_agent_id}",
+        "roslaunch_package": "optitrack_ros_communication",
+        "roslaunch_file": "optitrack_nodes.launch",
+        "roslaunch_args": "${roslaunch_args}",
+        "roscore_settle_s": "${roscore_settle_s}",
+        "sensor_settle_s": "${sensor_settle_s}"
+      }
+    }
+  ]
+}

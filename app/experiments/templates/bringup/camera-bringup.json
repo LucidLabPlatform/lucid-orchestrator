@@ -1,0 +1,29 @@
+{
+  "id": "camera-bringup",
+  "name": "Camera Bringup",
+  "version": "1.0.0",
+  "description": "Brings up the camera on the camera agent: ensure roscore, ensure ros_bridge, start start_camera.launch from remote_lab. Wraps ros-bringup.",
+  "tags": ["bringup", "ros", "camera", "foraging"],
+  "parameters": {
+    "camera_agent_id":  { "type": "string", "default": "camera", "required": false, "description": "Agent hosting the camera" },
+    "roslaunch_args":   { "type": "object", "default": {},       "required": false, "description": "Camera roslaunch args (empty by default)" },
+    "roscore_settle_s": { "type": "float",  "default": 10.0,     "required": false, "description": "Wait after spawning roscore" },
+    "sensor_settle_s":  { "type": "float",  "default": 10.0,     "required": false, "description": "Wait after roslaunch-start" }
+  },
+  "steps": [
+    {
+      "name": "camera-bringup",
+      "type": "template",
+      "on_failure": "abort",
+      "template_id": "ros-bringup",
+      "template_params": {
+        "agent_id": "${camera_agent_id}",
+        "roslaunch_package": "remote_lab",
+        "roslaunch_file": "start_camera.launch",
+        "roslaunch_args": "${roslaunch_args}",
+        "roscore_settle_s": "${roscore_settle_s}",
+        "sensor_settle_s": "${sensor_settle_s}"
+      }
+    }
+  ]
+}
