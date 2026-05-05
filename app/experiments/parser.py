@@ -128,15 +128,35 @@ def resolve_params_in_step(step_params: dict[str, Any], step_results: dict[str, 
 
 _TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 
+# Subdirectories under templates/ that should be scanned for seed templates.
+# old-templates/ is intentionally excluded so retired templates don't shadow
+# active ones if their ids overlap.
+_SEED_SUBDIRS = ("bringup",)
+
 
 def load_seed_templates() -> list[TemplateDef]:
     if not os.path.isdir(_TEMPLATES_DIR):
         return []
     templates = []
+
+    # Top-level templates first.
     for fname in sorted(os.listdir(_TEMPLATES_DIR)):
         fpath = os.path.join(_TEMPLATES_DIR, fname)
         if os.path.isdir(fpath):
             continue
         if fname.endswith((".yaml", ".yml", ".json")):
             templates.append(load_template(fpath))
+
+    # Then explicit subdirs (bringup/, etc.) so referenced sub-templates seed too.
+    for sub in _SEED_SUBDIRS:
+        sub_path = os.path.join(_TEMPLATES_DIR, sub)
+        if not os.path.isdir(sub_path):
+            continue
+        for fname in sorted(os.listdir(sub_path)):
+            fpath = os.path.join(sub_path, fname)
+            if os.path.isdir(fpath):
+                continue
+            if fname.endswith((".yaml", ".yml", ".json")):
+                templates.append(load_template(fpath))
+
     return templates
