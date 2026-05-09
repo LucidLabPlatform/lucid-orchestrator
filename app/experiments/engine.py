@@ -156,6 +156,8 @@ class ExperimentEngine:
 
     async def _cancel_run(self, run_id: str, step_index: int) -> None:
         ended_at = _now()
+        await self._cleanup_topic_links(run_id)
+        await self._db(self._sync_flush_running_steps, run_id, ended_at)
         await self._db(self._sync_update_run, run_id, STATUS_CANCELLED, None, ended_at, "Cancelled by user")
         await self._broadcast(
             {"type": "experiment_cancelled", "run_id": run_id, "step_index": step_index, "ts": ended_at.isoformat()}
@@ -613,6 +615,8 @@ class ExperimentEngine:
 
     async def _abort_run(self, run_id: str, error: str) -> None:
         ended_at = _now()
+        await self._cleanup_topic_links(run_id)
+        await self._db(self._sync_flush_running_steps, run_id, ended_at)
         await self._db(self._sync_update_run, run_id, STATUS_FAILED, None, ended_at, error)
         await self._broadcast({"type": "experiment_failed", "run_id": run_id, "error": error, "ts": ended_at.isoformat()})
         log.error("Experiment run %s failed: %s", run_id, error)
@@ -747,6 +751,12 @@ class ExperimentEngine:
                         step_id,
                     ),
                 )
+            conn.commit()
+
+    def _sync_flush_running_steps(self, run_id: str, ended_at: datetime) -> None:
+        """Mark any experiment_steps still in 'running' state as 'cancelled'."""
+        with DB.connect() as conn:
+            DB.mark_running_experiment_steps_cancelled(conn, run_id, ended_at=ended_at)
             conn.commit()
 
     async def _broadcast(self, event: dict) -> None:

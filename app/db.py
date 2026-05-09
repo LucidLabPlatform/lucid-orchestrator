@@ -517,6 +517,29 @@ def mark_active_experiment_runs_failed(
     return run_ids
 
 
+def mark_running_experiment_steps_cancelled(
+    conn: psycopg2.extensions.connection,
+    run_id: str,
+    *,
+    ended_at: datetime,
+) -> None:
+    """Mark any experiment_steps still in 'running' state for *run_id* as 'cancelled'.
+
+    Called from _abort_run and _cancel_run so zombie step rows don't linger.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE experiment_steps
+            SET status = 'cancelled',
+                ended_at = COALESCE(ended_at, %s)
+            WHERE run_id = %s
+              AND status = 'running'
+            """,
+            (ended_at, run_id),
+        )
+
+
 def set_sync_state(
     conn: psycopg2.extensions.connection,
     domain: str,

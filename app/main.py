@@ -81,6 +81,8 @@ def _recover_interrupted_runs(app) -> None:
             ended_at=ended_at,
             error="orchestrator restarted during run",
         )
+        for run_id in run_ids:
+            DB.mark_running_experiment_steps_cancelled(conn, run_id, ended_at=ended_at)
         conn.commit()
     for run_id in run_ids:
         try:
@@ -114,6 +116,8 @@ async def lifespan(app: FastAPI):
 
     broadcaster = Broadcaster(event_queue, ws_mgr)
     bc_task = asyncio.create_task(broadcaster.run())
+
+    rrm.attach_ws_mgr(ws_mgr)
 
     app.state.bridge = bridge
     app.state.ws_mgr = ws_mgr
