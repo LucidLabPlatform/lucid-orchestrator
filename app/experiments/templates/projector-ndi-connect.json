@@ -20,9 +20,9 @@
       "on_failure": "abort",
       "retries": 0,
       "steps": [
-        { "name": "power_on_north", "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${north_agent_id}", "component_id": "projector", "action": "power/on", "timeout_s": 30, "params": {} },
-        { "name": "power_on_east",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${east_agent_id}",  "component_id": "projector", "action": "power/on", "timeout_s": 30, "params": {} },
-        { "name": "power_on_west",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${west_agent_id}",  "component_id": "projector", "action": "power/on", "timeout_s": 30, "params": {} }
+        { "name": "power_on_north", "type": "command", "on_failure": "abort", "retries": 2, "agent_id": "${north_agent_id}", "component_id": "projector", "action": "power/on", "timeout_s": 30, "params": {} },
+        { "name": "power_on_east",  "type": "command", "on_failure": "abort", "retries": 2, "agent_id": "${east_agent_id}",  "component_id": "projector", "action": "power/on", "timeout_s": 30, "params": {} },
+        { "name": "power_on_west",  "type": "command", "on_failure": "abort", "retries": 2, "agent_id": "${west_agent_id}",  "component_id": "projector", "action": "power/on", "timeout_s": 30, "params": {} }
       ]
     },
     {
@@ -37,9 +37,9 @@
       "on_failure": "abort",
       "retries": 0,
       "steps": [
-        { "name": "ndi_north", "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${north_agent_id}", "component_id": "ndi", "action": "receive/start", "timeout_s": 15, "params": { "source": "${ndi_source_north}" } },
-        { "name": "ndi_east",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${east_agent_id}",  "component_id": "ndi", "action": "receive/start", "timeout_s": 15, "params": { "source": "${ndi_source_east}" } },
-        { "name": "ndi_west",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${west_agent_id}",  "component_id": "ndi", "action": "receive/start", "timeout_s": 15, "params": { "source": "${ndi_source_west}" } }
+        { "name": "ndi_north", "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${north_agent_id}", "component_id": "ndi", "action": "receive/start", "timeout_s": 15, "params": { "stream_name": "${ndi_source_north}" } },
+        { "name": "ndi_east",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${east_agent_id}",  "component_id": "ndi", "action": "receive/start", "timeout_s": 15, "params": { "stream_name": "${ndi_source_east}" } },
+        { "name": "ndi_west",  "type": "command", "on_failure": "abort", "retries": 0, "agent_id": "${west_agent_id}",  "component_id": "ndi", "action": "receive/start", "timeout_s": 15, "params": { "stream_name": "${ndi_source_west}" } }
       ]
     }
   ]
