@@ -16,6 +16,7 @@ from app.experiments.engine import ExperimentEngine
 from app.experiments.parser import load_seed_templates
 from app.experiments.request_response import RequestResponseManager
 from app.mqtt_bridge import MqttBridge
+from app.voice_bridge import VoiceBridge
 from app.routes.api import router as api_router
 from app.routes.experiments import router as experiments_router
 from app.heartbeat import heartbeat_checker
@@ -114,12 +115,21 @@ async def lifespan(app: FastAPI):
     bridge = MqttBridge(event_queue, rrm, client_id=mqtt_client_id)
     bridge.start()
 
+    # MQTT↔HTTP voice bridge for lucid-esp-agent.  Long-lived httpx client
+    # shared across STT/AI/TTS calls; bound to this asyncio loop.
+    import httpx
+    voice_http = httpx.AsyncClient(timeout=httpx.Timeout(95.0))
+    voice_bridge = VoiceBridge(bridge, voice_http, asyncio.get_running_loop())
+    bridge.set_voice_bridge(voice_bridge)
+
     broadcaster = Broadcaster(event_queue, ws_mgr)
     bc_task = asyncio.create_task(broadcaster.run())
 
     rrm.attach_ws_mgr(ws_mgr)
 
     app.state.bridge = bridge
+    app.state.voice_bridge = voice_bridge
+    app.state.voice_http = voice_http
     app.state.ws_mgr = ws_mgr
     app.state.rrm = rrm
     app.state.tlm = tlm
@@ -147,6 +157,7 @@ async def lifespan(app: FastAPI):
     broadcaster.stop()
     bc_task.cancel()
     bridge.stop()
+    await voice_http.aclose()
     log.info("lucid-orchestrator stopped")
 
 

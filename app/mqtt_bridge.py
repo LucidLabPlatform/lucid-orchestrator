@@ -53,6 +53,8 @@ MQTT_USERNAME = os.environ["LUCID_MQTT_USERNAME"]
 MQTT_PASSWORD = os.environ["LUCID_MQTT_PASSWORD"]
 
 CC_SUBSCRIPTIONS = [
+    # ESP voice round-trip — owned by app.voice_bridge.VoiceBridge.
+    ("lucid/agents/+/components/ai_session/cmd/voice_round_trip", 1),
     ("lucid/agents/+/metadata", 1),
     ("lucid/agents/+/status", 1),
     ("lucid/agents/+/state", 1),
@@ -130,6 +132,7 @@ class MqttBridge:
         self._q = event_queue
         self._rrm = rrm
         self._telemetry_watchers: dict[str, dict[str, Callable]] = defaultdict(dict)
+        self._voice_bridge = None  # set via set_voice_bridge()
         self._client = mqtt.Client(
             client_id=client_id,
             protocol=mqtt.MQTTv5,
@@ -159,6 +162,15 @@ class MqttBridge:
             retain:  Whether the broker should retain the message.
         """
         self._client.publish(topic, json.dumps(payload), qos=qos, retain=retain)
+
+    def set_voice_bridge(self, voice_bridge) -> None:
+        """Register the VoiceBridge that handles voice_round_trip cmds.
+
+        Set during FastAPI lifespan after both the bridge and the asyncio
+        loop are available.  When None, voice cmds are silently dropped
+        (broadcaster still sees the message via the normal event path).
+        """
+        self._voice_bridge = voice_bridge
 
     def add_telemetry_watcher(self, topic: str, callback: Callable[[Any], None]) -> str:
         """Register a callback invoked on each message matching *topic*.
@@ -236,6 +248,16 @@ class MqttBridge:
             request_id = (payload or {}).get("request_id") if isinstance(payload, dict) else None
             if request_id:
                 self._rrm.resolve_threadsafe(request_id, payload)
+
+        # Voice round-trip: forward to the bridge.  We check the topic suffix
+        # rather than registering yet another watcher mechanism — single use
+        # case, no need to generalise.
+        if (
+            self._voice_bridge is not None
+            and component_id == "ai_session"
+            and topic_type == "cmd/voice_round_trip"
+        ):
+            self._voice_bridge.handle_message(agent_id, payload if isinstance(payload, dict) else None)
 
         # Notify any registered telemetry watchers for this exact topic.
         watchers = self._telemetry_watchers.get(msg.topic)
