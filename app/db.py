@@ -54,24 +54,18 @@ def init_schema(url: str | None = None) -> None:
             """)
             cur.execute("ALTER TABLE mqtt_users ADD COLUMN IF NOT EXISTS first_seen_ts TIMESTAMPTZ")
             cur.execute("ALTER TABLE mqtt_users ADD COLUMN IF NOT EXISTS last_seen_ts  TIMESTAMPTZ")
-            # Reclassify obsolete role values before adding the CHECK constraint.
+            # Reclassify obsolete role values before reapplying the CHECK constraint.
             # Sync will overwrite these on its next pass; this is a transition safeguard.
             cur.execute("""
                 UPDATE mqtt_users
                 SET role = 'other'
-                WHERE role NOT IN ('agent', 'superuser', 'central-command', 'other')
+                WHERE role NOT IN ('agent', 'superuser', 'central-command', 'voice-agent', 'other')
             """)
+            cur.execute("ALTER TABLE mqtt_users DROP CONSTRAINT IF EXISTS mqtt_users_role_check")
             cur.execute("""
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM pg_constraint WHERE conname = 'mqtt_users_role_check'
-                    ) THEN
-                        ALTER TABLE mqtt_users
-                        ADD CONSTRAINT mqtt_users_role_check
-                        CHECK (role IN ('agent', 'superuser', 'central-command', 'other'));
-                    END IF;
-                END $$;
+                ALTER TABLE mqtt_users
+                ADD CONSTRAINT mqtt_users_role_check
+                CHECK (role IN ('agent', 'superuser', 'central-command', 'voice-agent', 'other'))
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS mqtt_users_role_idx ON mqtt_users(role)")
             cur.execute("CREATE INDEX IF NOT EXISTS mqtt_users_last_synced_idx ON mqtt_users(last_synced_at DESC)")
