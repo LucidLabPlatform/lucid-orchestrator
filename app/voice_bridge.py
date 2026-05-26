@@ -31,8 +31,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 import os
+import time
 from typing import Any
 
 import httpx
@@ -57,6 +59,17 @@ def _result_topic(agent_id: str) -> str:
         f"lucid/agents/{agent_id}"
         f"/components/ai_session/evt/voice_round_trip/result"
     )
+
+
+def _log_bridge_stage(stage: str, t0: float, request_id: str, extra: dict) -> None:
+    """Emit a voice_stage_done JSON log line for a bridge stage."""
+    log.info(json.dumps({
+        "event": "voice_stage_done",
+        "stage": stage,
+        "elapsed_ms": int((time.monotonic() - t0) * 1000),
+        "request_id": request_id,
+        "extra": extra,
+    }))
 
 
 class VoiceBridge:
@@ -90,6 +103,8 @@ class VoiceBridge:
     async def _handle_async(self, agent_id: str, payload: dict) -> None:
         request_id = str(payload.get("request_id", ""))
         result_topic = _result_topic(agent_id)
+        rid_headers = {"X-Request-ID": request_id} if request_id else {}
+        t_total = time.monotonic()
         try:
             audio_b64 = payload.get("audio_b64", "")
             session_id = str(payload.get("session_id") or "default")
@@ -104,38 +119,46 @@ class VoiceBridge:
 
             # 1) STT
             files = {"audio": ("speech.wav", wav_bytes, "audio/wav")}
+            t0 = time.monotonic()
             r = await self._http.post(
                 f"http://{VOICE_HOST}:{VOICE_PORT}/api/voice/stt",
                 files=files,
+                headers=rid_headers,
                 timeout=STT_TIMEOUT_S,
             )
             r.raise_for_status()
             transcript = (r.json() or {}).get("text", "").strip()
+            _log_bridge_stage("stt", t0, request_id, {"agent_id": agent_id, "audio_bytes": len(wav_bytes)})
             log.info("voice_bridge[%s] stt=%r", agent_id, transcript[:80])
             if not transcript:
                 raise ValueError("stt returned empty transcript")
 
             # 2) AI chat (non-streaming for simplicity in v1)
+            t0 = time.monotonic()
             r = await self._http.post(
                 f"http://{AI_HOST}:{AI_PORT}/api/ai/chat",
-                json={"message": transcript, "session_id": session_id},
+                json={"message": transcript, "session_id": session_id, "request_id": request_id},
                 timeout=AI_TIMEOUT_S,
             )
             r.raise_for_status()
             ai_text = (r.json() or {}).get("response", "").strip()
+            _log_bridge_stage("ai_total", t0, request_id, {"agent_id": agent_id, "transcript_len": len(transcript)})
             log.info("voice_bridge[%s] ai=%r", agent_id, ai_text[:80])
             if not ai_text:
                 raise ValueError("ai returned empty response")
 
             # 3) TTS
+            t0 = time.monotonic()
             r = await self._http.post(
                 f"http://{VOICE_HOST}:{VOICE_PORT}/api/voice/tts",
                 json={"text": ai_text, "length_scale": 1.0},
+                headers=rid_headers,
                 timeout=TTS_TIMEOUT_S,
             )
             r.raise_for_status()
             tts_wav = r.content
             tts_b64 = base64.b64encode(tts_wav).decode("ascii")
+            _log_bridge_stage("tts", t0, request_id, {"agent_id": agent_id, "text_len": len(ai_text), "audio_bytes": len(tts_wav)})
             log.info(
                 "voice_bridge[%s] tts_bytes=%d → publishing result",
                 agent_id, len(tts_wav),
@@ -155,6 +178,10 @@ class VoiceBridge:
                 },
                 qos=1,
                 retain=False,
+            )
+            _log_bridge_stage(
+                "bridge_total", t_total, request_id,
+                {"agent_id": agent_id, "audio_in_bytes": len(wav_bytes), "audio_out_bytes": len(tts_wav)},
             )
         except httpx.HTTPStatusError as exc:
             err = f"http_{exc.response.status_code}"
