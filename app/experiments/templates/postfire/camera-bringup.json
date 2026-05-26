@@ -1,0 +1,61 @@
+{
+  "id": "camera-bringup-postfire",
+  "name": "Camera Bringup",
+  "version": "1.0.0",
+  "description": "Brings up the camera on the camera agent: ensure roscore, ensure ros_bridge, start start_camera.launch from remote_lab. Wraps ros-bringup.",
+  "tags": [
+    "bringup",
+    "ros",
+    "camera",
+    "foraging"
+  ],
+  "parameters": {
+    "roslaunch_args": {
+      "type": "object",
+      "default": {},
+      "required": false,
+      "description": "Camera roslaunch args (empty by default)"
+    },
+    "camera_agent_id": {
+      "type": "string",
+      "default": "camera",
+      "required": false,
+      "description": "Agent hosting the camera"
+    },
+    "sensor_settle_s": {
+      "type": "float",
+      "default": 10.0,
+      "required": false,
+      "description": "Wait after roslaunch-start"
+    },
+    "roscore_settle_s": {
+      "type": "float",
+      "default": 10.0,
+      "required": false,
+      "description": "Wait after spawning roscore"
+    }
+  },
+  "steps": [
+    {
+      "qos": 0,
+      "name": "camera-bringup",
+      "type": "template",
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "template_id": "ros-bringup-postfire",
+      "select_clause": "*",
+      "template_params": {
+        "agent_id": "${camera_agent_id}",
+        "roslaunch_args": "${roslaunch_args}",
+        "roslaunch_file": "start_camera.launch",
+        "sensor_settle_s": "${sensor_settle_s}",
+        "roscore_settle_s": "${roscore_settle_s}",
+        "roslaunch_package": "remote_lab"
+      }
+    }
+  ]
+}

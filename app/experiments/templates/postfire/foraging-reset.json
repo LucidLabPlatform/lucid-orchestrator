@@ -1,0 +1,578 @@
+{
+  "id": "foraging-reset-postfire",
+  "name": "Foraging Reset (v2, postfire)",
+  "version": "1.0.0",
+  "description": "Targets the renamed rosbot-pc agent. Enables OptiTrack + reset_status telemetry, creates pose and LED progress links, records reset rosbags, runs reset-to-start, waits for success (60s timeout), then stops recordings and tears down all links + telemetry it created.",
+  "tags": [
+    "bringup",
+    "foraging",
+    "reset",
+    "postfire"
+  ],
+  "parameters": {
+    "goal_x": {
+      "type": "float",
+      "default": 0.2546336352825165,
+      "required": false,
+      "description": "Reset goal X (OptiTrack frame)"
+    },
+    "goal_y": {
+      "type": "float",
+      "default": 0.2405686378479004,
+      "required": false,
+      "description": "Reset goal Y (OptiTrack frame)"
+    },
+    "goal_qw": {
+      "type": "float",
+      "default": -0.9080696702003479,
+      "required": false,
+      "description": "Goal orientation quaternion W"
+    },
+    "goal_qx": {
+      "type": "float",
+      "default": -0.03810122236609459,
+      "required": false,
+      "description": "Goal orientation quaternion X"
+    },
+    "goal_qy": {
+      "type": "float",
+      "default": -0.08715175837278366,
+      "required": false,
+      "description": "Goal orientation quaternion Y"
+    },
+    "goal_qz": {
+      "type": "float",
+      "default": 0.4078754484653473,
+      "required": false,
+      "description": "Goal orientation quaternion Z"
+    },
+    "yaw_sign": {
+      "type": "float",
+      "default": 1,
+      "required": false,
+      "description": "OptiTrack yaw direction sign (+1 standard CCW, -1 to flip)"
+    },
+    "launch_led": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Drive the LED progress bar from reset_status"
+    },
+    "yaw_offset": {
+      "type": "float",
+      "default": 1.5708,
+      "required": false,
+      "description": "OptiTrack -> robot yaw correction (rad). Calibrated 2026-05-26: rigid body's local +X is rotated -pi/2 from physical forward, so add +pi/2."
+    },
+    "launch_hydra": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Enable OptiTrack telemetry, topic link, and rosbag"
+    },
+    "led_agent_id": {
+      "type": "string",
+      "default": "led_truss",
+      "required": false,
+      "description": "LED truss agent"
+    },
+    "launch_camera": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Record the camera rosbag during reset"
+    },
+    "launch_rosbot": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Enable rosbot-pc telemetry, recording, and reset roslaunch"
+    },
+    "pos_tolerance": {
+      "type": "float",
+      "default": 0.1,
+      "required": false,
+      "description": "Position tolerance (m)"
+    },
+    "yaw_tolerance": {
+      "type": "float",
+      "default": 0.15,
+      "required": false,
+      "description": "Yaw tolerance (rad)"
+    },
+    "hydra_agent_id": {
+      "type": "string",
+      "default": "hydra",
+      "required": false,
+      "description": "Hydra agent (OptiTrack)"
+    },
+    "wait_timeout_s": {
+      "type": "float",
+      "default": 60,
+      "required": false,
+      "description": "Max seconds to wait for reset_status.state == 'success'"
+    },
+    "camera_agent_id": {
+      "type": "string",
+      "default": "camera",
+      "required": false,
+      "description": "Camera agent"
+    },
+    "rosbag_output_dir": {
+      "type": "string",
+      "default": "~/lucid-agent-core-rosbot-pc/data/bags",
+      "required": false,
+      "description": "Rosbag dir on rosbot-pc"
+    },
+    "optitrack_agent_id": {
+      "type": "string",
+      "default": "hydra",
+      "required": false,
+      "description": "Agent that records the OptiTrack rosbag (usually hydra)"
+    },
+    "rosbot_pc_agent_id": {
+      "type": "string",
+      "default": "rosbot_pc",
+      "required": false,
+      "description": "Agent running ros_bridge for the rosbot ROS master"
+    },
+    "camera_rosbag_output_dir": {
+      "type": "string",
+      "default": "~/lucid-agent-core/data/bags",
+      "required": false,
+      "description": "Rosbag dir on the camera agent"
+    },
+    "optitrack_rosbag_output_dir": {
+      "type": "string",
+      "default": "~/lucid-agent-core/data/bags",
+      "required": false,
+      "description": "Rosbag dir on the OptiTrack agent"
+    }
+  },
+  "steps": [
+    {
+      "qos": 0,
+      "name": "defensive-stop-roslaunch",
+      "type": "command",
+      "action": "roslaunch-stop",
+      "params": {},
+      "retries": 0,
+      "agent_id": "${rosbot_pc_agent_id}",
+      "operation": "create",
+      "timeout_s": 20.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "component_id": "ros_bridge",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "enable-reset-telemetry",
+      "type": "parallel",
+      "steps": [
+        {
+          "qos": 0,
+          "name": "enable-optitrack-telemetry",
+          "type": "command",
+          "when": "${launch_hydra}",
+          "action": "cfg/telemetry/set",
+          "params": {
+            "set": {
+              "optitrack_umh_6": {
+                "enabled": true,
+                "interval_s": 1,
+                "change_threshold_percent": 0
+              }
+            }
+          },
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "abort",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "enable-reset-status-telemetry",
+          "type": "command",
+          "when": "${launch_rosbot}",
+          "action": "cfg/telemetry/set",
+          "params": {
+            "set": {
+              "reset_status": {
+                "enabled": true,
+                "interval_s": 3,
+                "change_threshold_percent": 0
+              }
+            }
+          },
+          "retries": 0,
+          "agent_id": "${rosbot_pc_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "abort",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        }
+      ],
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "create-optitrack-to-rosbot-link",
+      "type": "topic_link",
+      "when": "${launch_hydra}",
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "source_topic": "lucid/agents/${hydra_agent_id}/components/ros_bridge/telemetry/optitrack_umh_6",
+      "target_topic": "lucid/agents/${rosbot_pc_agent_id}/components/ros_bridge/cmd/optitrack_pose",
+      "select_clause": "payload.value as value, id as request_id",
+      "template_params": {},
+      "payload_template": "{\"request_id\": \"${request_id}\", \"data\": ${value}}"
+    },
+    {
+      "qos": 0,
+      "name": "link-reset-distance-to-led",
+      "type": "topic_link",
+      "when": "${launch_led}",
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "source_topic": "lucid/agents/${rosbot_pc_agent_id}/components/ros_bridge/telemetry/reset_status",
+      "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-range-percent",
+      "select_clause": "CASE WHEN payload.value.pos_error >= 1.0 THEN 0.0 ELSE power(1.0 - payload.value.pos_error, 3.0) END as end_pct, id as request_id",
+      "template_params": {},
+      "payload_template": "{\"request_id\": \"${request_id}\", \"color\": {\"r\": 0, \"g\": 255, \"b\": 0}, \"start_percent\": 0.0, \"end_percent\": ${end_pct}}"
+    },
+    {
+      "qos": 0,
+      "name": "start-reset-recordings",
+      "type": "parallel",
+      "steps": [
+        {
+          "qos": 0,
+          "name": "start-rosbot-reset-rosbag",
+          "type": "command",
+          "when": "${launch_rosbot}",
+          "action": "rosbag-start",
+          "params": {
+            "data": {
+              "prefix": "reset",
+              "output_dir": "${rosbag_output_dir}"
+            }
+          },
+          "retries": 0,
+          "agent_id": "${rosbot_pc_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "start-optitrack-reset-rosbag",
+          "type": "command",
+          "when": "${launch_hydra}",
+          "action": "rosbag-start",
+          "params": {
+            "data": {
+              "prefix": "reset",
+              "output_dir": "${optitrack_rosbag_output_dir}"
+            }
+          },
+          "retries": 0,
+          "agent_id": "${optitrack_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "start-camera-reset-rosbag",
+          "type": "command",
+          "when": "${launch_camera}",
+          "action": "rosbag-start",
+          "params": {
+            "data": {
+              "prefix": "reset",
+              "output_dir": "${camera_rosbag_output_dir}"
+            }
+          },
+          "retries": 0,
+          "agent_id": "${camera_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        }
+      ],
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "start-reset-to-start",
+      "type": "command",
+      "action": "roslaunch-start",
+      "params": {
+        "data": {
+          "args": {
+            "goal_x": "${goal_x}",
+            "goal_y": "${goal_y}",
+            "goal_qw": "${goal_qw}",
+            "goal_qx": "${goal_qx}",
+            "goal_qy": "${goal_qy}",
+            "goal_qz": "${goal_qz}",
+            "yaw_sign": "${yaw_sign}",
+            "yaw_offset": "${yaw_offset}",
+            "pos_tolerance": "${pos_tolerance}",
+            "yaw_tolerance": "${yaw_tolerance}"
+          },
+          "package": "foraging_bringup",
+          "launch_file": "reset_to_start.launch"
+        }
+      },
+      "retries": 0,
+      "agent_id": "${rosbot_pc_agent_id}",
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "component_id": "ros_bridge",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "wait-for-reset-success",
+      "type": "wait_for_condition",
+      "params": {},
+      "retries": 0,
+      "agent_id": "${rosbot_pc_agent_id}",
+      "condition": {
+        "field": "value.state",
+        "equals": "success"
+      },
+      "operation": "create",
+      "timeout_s": "${wait_timeout_s}",
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "component_id": "ros_bridge",
+      "select_clause": "*",
+      "template_params": {},
+      "telemetry_metric": "reset_status"
+    },
+    {
+      "qos": 0,
+      "name": "stop-reset-launch",
+      "type": "command",
+      "action": "roslaunch-stop",
+      "params": {},
+      "retries": 0,
+      "agent_id": "${rosbot_pc_agent_id}",
+      "operation": "create",
+      "timeout_s": 20.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "component_id": "ros_bridge",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "stop-reset-recordings",
+      "type": "parallel",
+      "steps": [
+        {
+          "qos": 0,
+          "name": "stop-rosbot-reset-rosbag",
+          "type": "command",
+          "when": "${launch_rosbot}",
+          "action": "rosbag-stop",
+          "params": {},
+          "retries": 0,
+          "agent_id": "${rosbot_pc_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "stop-optitrack-reset-rosbag",
+          "type": "command",
+          "when": "${launch_hydra}",
+          "action": "rosbag-stop",
+          "params": {},
+          "retries": 0,
+          "agent_id": "${optitrack_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "stop-camera-reset-rosbag",
+          "type": "command",
+          "when": "${launch_camera}",
+          "action": "rosbag-stop",
+          "params": {},
+          "retries": 0,
+          "agent_id": "${camera_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        }
+      ],
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "delete-link-reset-distance-to-led",
+      "type": "topic_link",
+      "when": "${launch_led}",
+      "params": {},
+      "retries": 0,
+      "operation": "delete",
+      "timeout_s": 30.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "source_topic": "lucid/agents/${rosbot_pc_agent_id}/components/ros_bridge/telemetry/reset_status",
+      "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-range-percent",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "delete-link-optitrack-to-rosbot",
+      "type": "topic_link",
+      "when": "${launch_hydra}",
+      "params": {},
+      "retries": 0,
+      "operation": "delete",
+      "timeout_s": 30.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "source_topic": "lucid/agents/${hydra_agent_id}/components/ros_bridge/telemetry/optitrack_umh_6",
+      "target_topic": "lucid/agents/${rosbot_pc_agent_id}/components/ros_bridge/cmd/optitrack_pose",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "disable-reset-telemetry",
+      "type": "parallel",
+      "steps": [
+        {
+          "qos": 0,
+          "name": "disable-optitrack-telemetry",
+          "type": "command",
+          "when": "${launch_hydra}",
+          "action": "cfg/telemetry/set",
+          "params": {
+            "set": {
+              "optitrack_umh_6": {
+                "enabled": false
+              }
+            }
+          },
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "disable-reset-status-telemetry",
+          "type": "command",
+          "when": "${launch_rosbot}",
+          "action": "cfg/telemetry/set",
+          "params": {
+            "set": {
+              "reset_status": {
+                "enabled": false
+              }
+            }
+          },
+          "retries": 0,
+          "agent_id": "${rosbot_pc_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        }
+      ],
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    }
+  ]
+}

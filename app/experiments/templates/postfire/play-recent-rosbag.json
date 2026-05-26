@@ -1,0 +1,77 @@
+{
+  "id": "play-recent-rosbag-postfire",
+  "name": "Play Most Recent Rosbag",
+  "version": "1.0.0",
+  "description": "Plays the most recent .bag file from a directory on the rosbot_pc agent. Spawns rosbag play as a long-lived named process via the exec component; stop with exec.kill name=rosbag_play. Requires roscore reachable at ros_master_uri.",
+  "tags": [
+    "bringup",
+    "ros",
+    "rosbag",
+    "playback"
+  ],
+  "parameters": {
+    "bag_dir": {
+      "type": "string",
+      "default": "~/lucid-agent-core/data/bags",
+      "required": false,
+      "description": "Directory to scan for the newest *.bag file"
+    },
+    "agent_id": {
+      "type": "string",
+      "default": "rosbot_pc",
+      "required": false,
+      "description": "Agent that holds the bags and will play them"
+    },
+    "ws_setup": {
+      "type": "string",
+      "default": "~/foraging_ws/devel/setup.bash",
+      "required": false,
+      "description": "Workspace overlay sourced after the base ROS setup"
+    },
+    "ros_setup": {
+      "type": "string",
+      "default": "/opt/ros/noetic/setup.bash",
+      "required": false,
+      "description": "Base ROS setup script sourced before playback"
+    },
+    "timeout_s": {
+      "type": "float",
+      "default": 15.0,
+      "required": false,
+      "description": "exec.spawn handshake timeout (does NOT cap bag duration)"
+    },
+    "process_name": {
+      "type": "string",
+      "default": "rosbag_play",
+      "required": false,
+      "description": "exec.spawn process name; use this with exec.kill to stop playback"
+    },
+    "ros_master_uri": {
+      "type": "string",
+      "default": "http://10.205.3.20:11311",
+      "required": false,
+      "description": "ROS_MASTER_URI exported before rosbag play"
+    }
+  },
+  "steps": [
+    {
+      "qos": 0,
+      "name": "spawn-rosbag-play",
+      "type": "command",
+      "action": "spawn",
+      "params": {
+        "name": "${process_name}",
+        "command": "bash -c 'BAG=$(ls -t \"${bag_dir}\"/*.bag 2>/dev/null | head -1); [ -z \"$BAG\" ] && { echo \"no .bag in ${bag_dir}\" >&2; exit 2; }; echo \"Playing: $BAG\"; source ${ros_setup} && source ${ws_setup} && export ROS_MASTER_URI=${ros_master_uri} && exec rosbag play \"$BAG\"'"
+      },
+      "retries": 0,
+      "agent_id": "${agent_id}",
+      "operation": "create",
+      "timeout_s": "${timeout_s}",
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "component_id": "exec",
+      "select_clause": "*",
+      "template_params": {}
+    }
+  ]
+}

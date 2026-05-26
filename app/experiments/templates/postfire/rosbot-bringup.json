@@ -1,0 +1,229 @@
+{
+  "id": "rosbot-bringup-postfire",
+  "name": "ROSbot Bringup",
+  "version": "1.0.0",
+  "description": "Ensures docker compose is up on the husarion onboard agent, optionally starts rosserial there, and ensures ros_bridge on the rosbot-pc agent is active.",
+  "tags": [
+    "bringup",
+    "ros",
+    "rosbot",
+    "foraging"
+  ],
+  "parameters": {
+    "compose_file": {
+      "type": "string",
+      "default": "/home/husarion/compose.yaml",
+      "required": false,
+      "description": "Absolute path to the docker compose file on the husarion"
+    },
+    "restart_docker": {
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "description": "Force a docker restart: kill the tracked spawn AND run docker compose down before bringing it back up. Default false uses ensure semantics."
+    },
+    "bridge_settle_s": {
+      "type": "float",
+      "default": 5.0,
+      "required": false,
+      "description": "Wait after ros_bridge start_ros"
+    },
+    "docker_settle_s": {
+      "type": "float",
+      "default": 15.0,
+      "required": false,
+      "description": "Wait after docker compose up"
+    },
+    "launch_rosserial": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Also start rosserial_python on the standard USB serial device"
+    },
+    "docker_serial_port": {
+      "type": "string",
+      "default": "/dev/ttySERIAL",
+      "required": false,
+      "description": "Value of SERIAL_PORT env var passed to docker compose (compose_farah.yaml expects ${SERIAL_PORT:?err} as a device mapping)"
+    },
+    "restart_ros_bridge": {
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "description": "Force a ros_bridge reconnect by calling stop_ros before start_ros. Required when restart_docker=true since the master inside the new container is a fresh process."
+    },
+    "rosbot_pc_agent_id": {
+      "type": "string",
+      "default": "rosbot_pc",
+      "required": false,
+      "description": "Pi agent that runs ros_bridge for the rosbot ROS master"
+    },
+    "rosserial_settle_s": {
+      "type": "float",
+      "default": 5.0,
+      "required": false,
+      "description": "Wait after rosserial spawn"
+    },
+    "rosbot_husarion_agent_id": {
+      "type": "string",
+      "default": "rosbot_husarion",
+      "required": false,
+      "description": "Onboard agent on the husarion that runs docker + rosserial via exec"
+    }
+  },
+  "steps": [
+    {
+      "qos": 0,
+      "name": "kill-rosbot-docker-spawn",
+      "type": "command",
+      "when": "${restart_docker}",
+      "action": "kill",
+      "params": {
+        "name": "rosbot_docker"
+      },
+      "retries": 0,
+      "agent_id": "${rosbot_husarion_agent_id}",
+      "operation": "create",
+      "timeout_s": 15.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "component_id": "exec",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "stop-docker-compose",
+      "type": "command",
+      "when": "${restart_docker}",
+      "action": "run",
+      "params": {
+        "command": "SERIAL_PORT=${docker_serial_port} docker compose -f ${compose_file} down"
+      },
+      "retries": 0,
+      "agent_id": "${rosbot_husarion_agent_id}",
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "component_id": "exec",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "ensure-rosbot-docker",
+      "type": "command",
+      "action": "spawn",
+      "params": {
+        "name": "rosbot_docker",
+        "command": "SERIAL_PORT=${docker_serial_port} docker compose -f ${compose_file} up"
+      },
+      "retries": 0,
+      "agent_id": "${rosbot_husarion_agent_id}",
+      "operation": "create",
+      "timeout_s": 15.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "component_id": "exec",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "wait-for-docker-startup",
+      "type": "delay",
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "duration_s": "${docker_settle_s}",
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "ensure-rosserial",
+      "type": "command",
+      "when": "${launch_rosserial}",
+      "action": "spawn",
+      "params": {
+        "name": "rosserial",
+        "command": "source /opt/ros/noetic/setup.bash && source /home/husarion/husarion_ws/devel/setup.bash && port=$(readlink -f /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0) && rosrun rosserial_python serial_node.py $port"
+      },
+      "retries": 0,
+      "agent_id": "${rosbot_husarion_agent_id}",
+      "operation": "create",
+      "timeout_s": 15.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "component_id": "exec",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "wait-for-rosserial",
+      "type": "delay",
+      "when": "${launch_rosserial}",
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "duration_s": "${rosserial_settle_s}",
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "stop-ros-bridge",
+      "type": "command",
+      "when": "${restart_ros_bridge}",
+      "action": "stop_ros",
+      "params": {},
+      "retries": 0,
+      "agent_id": "${rosbot_pc_agent_id}",
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "component_id": "ros_bridge",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "start-ros-bridge",
+      "type": "command",
+      "action": "start_ros",
+      "params": {},
+      "retries": 1,
+      "agent_id": "${rosbot_pc_agent_id}",
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "component_id": "ros_bridge",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "wait-for-ros-bridge",
+      "type": "delay",
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "duration_s": "${bridge_settle_s}",
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    }
+  ]
+}

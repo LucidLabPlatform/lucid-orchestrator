@@ -1,0 +1,64 @@
+{
+  "id": "foraging-puck-approval-postfire",
+  "name": "Foraging Puck Approval (postfire)",
+  "version": "1.0.0",
+  "description": "LED waiting animation and approval gate for puck placement.",
+  "tags": [
+    "foraging",
+    "approval",
+    "postfire"
+  ],
+  "parameters": {
+    "launch_led": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Show LED waiting animation"
+    },
+    "led_agent_id": {
+      "type": "string",
+      "default": "led_truss",
+      "required": false,
+      "description": "LED strip agent"
+    }
+  },
+  "steps": [
+    {
+      "qos": 0,
+      "name": "led-waiting-for-pucks",
+      "type": "command",
+      "when": "${launch_led}",
+      "action": "effect/theater-chase",
+      "params": {
+        "color": {
+          "b": 0,
+          "g": 150,
+          "r": 255
+        }
+      },
+      "retries": 0,
+      "agent_id": "${led_agent_id}",
+      "operation": "create",
+      "timeout_s": 10.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "component_id": "led_strip",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "approve-puck-placement",
+      "type": "approval",
+      "params": {},
+      "message": "Place pucks in the arena, then approve to start foraging.",
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 600.0,
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    }
+  ]
+}

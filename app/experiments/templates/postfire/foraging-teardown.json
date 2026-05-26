@@ -1,0 +1,694 @@
+{
+  "id": "foraging-teardown-postfire",
+  "name": "Foraging Teardown (postfire)",
+  "version": "1.0.0",
+  "description": "Reverses everything started by foraging-startup / foraging-reset / foraging-run / foraging-experiment. Safe to run anytime \u2014 every step is on_failure: continue. Topic-link deletes will fail if owned by a still-active run; cancel that run and wait for it to reach 'cancelled' state first.",
+  "tags": [
+    "teardown",
+    "foraging",
+    "postfire"
+  ],
+  "parameters": {
+    "clear_led": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Send led_strip/clear to stop any running effect"
+    },
+    "compose_file": {
+      "type": "string",
+      "default": "/home/husarion/compose.yaml",
+      "required": false,
+      "description": "Absolute path to docker compose file on husarion"
+    },
+    "led_agent_id": {
+      "type": "string",
+      "default": "led_truss",
+      "required": false,
+      "description": "LED truss agent"
+    },
+    "hydra_agent_id": {
+      "type": "string",
+      "default": "hydra",
+      "required": false,
+      "description": "Hydra agent (KNX + OptiTrack)"
+    },
+    "restore_lights": {
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "Restore KNX room lights to room_brightness"
+    },
+    "camera_agent_id": {
+      "type": "string",
+      "default": "camera",
+      "required": false,
+      "description": "Camera agent"
+    },
+    "room_brightness": {
+      "type": "integer",
+      "default": 200,
+      "required": false,
+      "description": "KNX brightness (0-255) to restore to if restore_lights=true"
+    },
+    "socrates_agent_id": {
+      "type": "string",
+      "default": "socrates",
+      "required": false,
+      "description": "Viz agent"
+    },
+    "docker_serial_port": {
+      "type": "string",
+      "default": "/dev/ttySERIAL",
+      "required": false,
+      "description": "SERIAL_PORT env var for docker compose down"
+    },
+    "rosbot_pc_agent_id": {
+      "type": "string",
+      "default": "rosbot_pc",
+      "required": false,
+      "description": "ROSbot Pi agent (ros_bridge, telemetry)"
+    },
+    "rosbot_husarion_agent_id": {
+      "type": "string",
+      "default": "rosbot_husarion",
+      "required": false,
+      "description": "Husarion onboard agent (docker + rosserial)"
+    }
+  },
+  "steps": [
+    {
+      "qos": 0,
+      "name": "stop-active-launches-and-bags",
+      "type": "parallel",
+      "steps": [
+        {
+          "qos": 0,
+          "name": "roslaunch-stop-camera",
+          "type": "command",
+          "action": "roslaunch-stop",
+          "params": {},
+          "retries": 0,
+          "agent_id": "${camera_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "roslaunch-stop-hydra",
+          "type": "command",
+          "action": "roslaunch-stop",
+          "params": {},
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "roslaunch-stop-rosbot_pc",
+          "type": "command",
+          "action": "roslaunch-stop",
+          "params": {},
+          "retries": 0,
+          "agent_id": "${rosbot_pc_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "rosbag-stop-camera",
+          "type": "command",
+          "action": "rosbag-stop",
+          "params": {},
+          "retries": 0,
+          "agent_id": "${camera_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "rosbag-stop-hydra",
+          "type": "command",
+          "action": "rosbag-stop",
+          "params": {},
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "rosbag-stop-rosbot_pc",
+          "type": "command",
+          "action": "rosbag-stop",
+          "params": {},
+          "retries": 0,
+          "agent_id": "${rosbot_pc_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "stop-arena",
+          "type": "command",
+          "action": "stop-arena",
+          "params": {},
+          "retries": 0,
+          "agent_id": "${socrates_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "viz",
+          "select_clause": "*",
+          "template_params": {}
+        }
+      ],
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "delete-topic-links",
+      "type": "parallel",
+      "steps": [
+        {
+          "qos": 0,
+          "name": "delete-link-optitrack-to-rosbot",
+          "type": "topic_link",
+          "params": {},
+          "retries": 0,
+          "operation": "delete",
+          "timeout_s": 30.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "source_topic": "lucid/agents/${hydra_agent_id}/components/ros_bridge/telemetry/optitrack_umh_6",
+          "target_topic": "lucid/agents/${rosbot_pc_agent_id}/components/ros_bridge/cmd/optitrack_pose",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "delete-link-reset-distance-to-led",
+          "type": "topic_link",
+          "params": {},
+          "retries": 0,
+          "operation": "delete",
+          "timeout_s": 30.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "source_topic": "lucid/agents/${rosbot_pc_agent_id}/components/ros_bridge/telemetry/reset_status",
+          "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-range-percent",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "delete-link-foraging-mode-to-led",
+          "type": "topic_link",
+          "params": {},
+          "retries": 0,
+          "operation": "delete",
+          "timeout_s": 30.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "source_topic": "lucid/agents/${rosbot_pc_agent_id}/components/ros_bridge/telemetry/foraging_status",
+          "target_topic": "lucid/agents/${led_agent_id}/components/led_strip/cmd/set-color",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "delete-link-puck-registry-to-viz",
+          "type": "topic_link",
+          "params": {},
+          "retries": 0,
+          "operation": "delete",
+          "timeout_s": 30.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "source_topic": "lucid/agents/${rosbot_pc_agent_id}/components/ros_bridge/telemetry/puck_registry",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/cmd/puck_registry",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "delete-link-aruco-registry-to-viz",
+          "type": "topic_link",
+          "params": {},
+          "retries": 0,
+          "operation": "delete",
+          "timeout_s": 30.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "source_topic": "lucid/agents/${rosbot_pc_agent_id}/components/ros_bridge/telemetry/aruco_registry",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/cmd/aruco_registry",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "delete-link-odom-to-viz",
+          "type": "topic_link",
+          "params": {},
+          "retries": 0,
+          "operation": "delete",
+          "timeout_s": 30.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "source_topic": "lucid/agents/${rosbot_pc_agent_id}/components/ros_bridge/telemetry/odom",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/cmd/robot_pose_odom",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "delete-link-optitrack-pose-to-viz",
+          "type": "topic_link",
+          "params": {},
+          "retries": 0,
+          "operation": "delete",
+          "timeout_s": 30.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "source_topic": "lucid/agents/${hydra_agent_id}/components/ros_bridge/telemetry/optitrack_umh_6",
+          "target_topic": "lucid/agents/${socrates_agent_id}/components/viz/cmd/robot_pose_optitrack",
+          "select_clause": "*",
+          "template_params": {}
+        }
+      ],
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "disable-telemetry",
+      "type": "parallel",
+      "steps": [
+        {
+          "qos": 0,
+          "name": "telem-off-optitrack-hydra",
+          "type": "command",
+          "action": "cfg/telemetry/set",
+          "params": {
+            "set": {
+              "optitrack_umh_6": {
+                "enabled": false
+              }
+            }
+          },
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "telem-off-reset_status-pc",
+          "type": "command",
+          "action": "cfg/telemetry/set",
+          "params": {
+            "set": {
+              "reset_status": {
+                "enabled": false
+              }
+            }
+          },
+          "retries": 0,
+          "agent_id": "${rosbot_pc_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "telem-off-foraging_status-pc",
+          "type": "command",
+          "action": "cfg/telemetry/set",
+          "params": {
+            "set": {
+              "foraging_status": {
+                "enabled": false
+              }
+            }
+          },
+          "retries": 0,
+          "agent_id": "${rosbot_pc_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "telem-off-foraging_results-pc",
+          "type": "command",
+          "action": "cfg/telemetry/set",
+          "params": {
+            "set": {
+              "foraging_results": {
+                "enabled": false
+              }
+            }
+          },
+          "retries": 0,
+          "agent_id": "${rosbot_pc_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "telem-off-puck_registry-pc",
+          "type": "command",
+          "action": "cfg/telemetry/set",
+          "params": {
+            "set": {
+              "puck_registry": {
+                "enabled": false
+              }
+            }
+          },
+          "retries": 0,
+          "agent_id": "${rosbot_pc_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "telem-off-aruco_registry-pc",
+          "type": "command",
+          "action": "cfg/telemetry/set",
+          "params": {
+            "set": {
+              "aruco_registry": {
+                "enabled": false
+              }
+            }
+          },
+          "retries": 0,
+          "agent_id": "${rosbot_pc_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "telem-off-odom-pc",
+          "type": "command",
+          "action": "cfg/telemetry/set",
+          "params": {
+            "set": {
+              "odom": {
+                "enabled": false
+              }
+            }
+          },
+          "retries": 0,
+          "agent_id": "${rosbot_pc_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "telem-off-move_base_status-pc",
+          "type": "command",
+          "action": "cfg/telemetry/set",
+          "params": {
+            "set": {
+              "move_base_status": {
+                "enabled": false
+              }
+            }
+          },
+          "retries": 0,
+          "agent_id": "${rosbot_pc_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "ros_bridge",
+          "select_clause": "*",
+          "template_params": {}
+        }
+      ],
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "kill-spawns",
+      "type": "parallel",
+      "steps": [
+        {
+          "qos": 0,
+          "name": "kill-rosbot_docker",
+          "type": "command",
+          "action": "kill",
+          "params": {
+            "name": "rosbot_docker"
+          },
+          "retries": 0,
+          "agent_id": "${rosbot_husarion_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "exec",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "kill-rosserial",
+          "type": "command",
+          "action": "kill",
+          "params": {
+            "name": "rosserial"
+          },
+          "retries": 0,
+          "agent_id": "${rosbot_husarion_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "exec",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "kill-roscore-camera",
+          "type": "command",
+          "action": "kill",
+          "params": {
+            "name": "roscore"
+          },
+          "retries": 0,
+          "agent_id": "${camera_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "exec",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "kill-roscore-hydra",
+          "type": "command",
+          "action": "kill",
+          "params": {
+            "name": "roscore"
+          },
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "operation": "create",
+          "timeout_s": 15.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "exec",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "kill-rviz",
+          "type": "command",
+          "action": "kill",
+          "params": {
+            "name": "rviz_foraging"
+          },
+          "retries": 0,
+          "agent_id": "${camera_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "gui",
+          "select_clause": "*",
+          "template_params": {}
+        }
+      ],
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "docker-compose-down",
+      "type": "command",
+      "action": "run",
+      "params": {
+        "command": "SERIAL_PORT=${docker_serial_port} docker compose -f ${compose_file} down"
+      },
+      "retries": 0,
+      "agent_id": "${rosbot_husarion_agent_id}",
+      "operation": "create",
+      "timeout_s": 60.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "component_id": "exec",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "restore-room",
+      "type": "parallel",
+      "steps": [
+        {
+          "qos": 0,
+          "name": "led-clear",
+          "type": "command",
+          "when": "${clear_led}",
+          "action": "clear",
+          "params": {},
+          "retries": 0,
+          "agent_id": "${led_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "led_strip",
+          "select_clause": "*",
+          "template_params": {}
+        },
+        {
+          "qos": 0,
+          "name": "lights-restore",
+          "type": "command",
+          "when": "${restore_lights}",
+          "action": "light/brightness/set",
+          "params": {
+            "light": "all",
+            "brightness": "${room_brightness}"
+          },
+          "retries": 0,
+          "agent_id": "${hydra_agent_id}",
+          "operation": "create",
+          "timeout_s": 10.0,
+          "on_failure": "continue",
+          "on_timeout": "abort",
+          "component_id": "knx",
+          "select_clause": "*",
+          "template_params": {}
+        }
+      ],
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    }
+  ]
+}

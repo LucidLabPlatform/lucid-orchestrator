@@ -1,0 +1,141 @@
+{
+  "id": "ros-bringup-postfire",
+  "name": "ROS Bringup",
+  "version": "1.0.0",
+  "description": "Ensures roscore is running on the target agent, ensures ros_bridge is active, and starts (or restarts) a roslaunch. Does not enable telemetry, create topic links, or start rosbags.",
+  "tags": [
+    "bringup",
+    "ros"
+  ],
+  "parameters": {
+    "agent_id": {
+      "type": "string",
+      "default": null,
+      "required": true,
+      "description": "Agent hosting roscore + ros_bridge"
+    },
+    "roslaunch_args": {
+      "type": "object",
+      "default": {},
+      "required": false,
+      "description": "{key: value} map; emitted as key:=value arg list"
+    },
+    "roslaunch_file": {
+      "type": "string",
+      "default": null,
+      "required": true,
+      "description": "Launch file name"
+    },
+    "roscore_command": {
+      "type": "string",
+      "default": "source /opt/ros/noetic/setup.bash && roscore",
+      "required": false,
+      "description": "Shell command for exec.spawn"
+    },
+    "sensor_settle_s": {
+      "type": "float",
+      "default": 10.0,
+      "required": false,
+      "description": "Wait after roslaunch-start for nodes to come up"
+    },
+    "roscore_settle_s": {
+      "type": "float",
+      "default": 10.0,
+      "required": false,
+      "description": "Wait after spawning roscore"
+    },
+    "roslaunch_package": {
+      "type": "string",
+      "default": null,
+      "required": true,
+      "description": "ROS package containing the launch file"
+    }
+  },
+  "steps": [
+    {
+      "qos": 0,
+      "name": "ensure-roscore",
+      "type": "command",
+      "action": "spawn",
+      "params": {
+        "name": "roscore",
+        "command": "${roscore_command}"
+      },
+      "retries": 0,
+      "agent_id": "${agent_id}",
+      "operation": "create",
+      "timeout_s": 15.0,
+      "on_failure": "continue",
+      "on_timeout": "abort",
+      "component_id": "exec",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "wait-for-roscore",
+      "type": "delay",
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "duration_s": "${roscore_settle_s}",
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "start-ros-bridge",
+      "type": "command",
+      "action": "start_ros",
+      "params": {},
+      "retries": 1,
+      "agent_id": "${agent_id}",
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "component_id": "ros_bridge",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "start-roslaunch",
+      "type": "command",
+      "action": "roslaunch-start",
+      "params": {
+        "data": {
+          "args": "${roslaunch_args}",
+          "package": "${roslaunch_package}",
+          "launch_file": "${roslaunch_file}"
+        }
+      },
+      "retries": 1,
+      "agent_id": "${agent_id}",
+      "operation": "create",
+      "timeout_s": 30.0,
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "component_id": "ros_bridge",
+      "select_clause": "*",
+      "template_params": {}
+    },
+    {
+      "qos": 0,
+      "name": "wait-for-sensor",
+      "type": "delay",
+      "params": {},
+      "retries": 0,
+      "operation": "create",
+      "timeout_s": 30.0,
+      "duration_s": "${sensor_settle_s}",
+      "on_failure": "abort",
+      "on_timeout": "abort",
+      "select_clause": "*",
+      "template_params": {}
+    }
+  ]
+}
