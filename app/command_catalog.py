@@ -64,7 +64,7 @@ COMPONENT_TEMPLATES: dict[str, dict | None] = {
     # LED strip
     "set-color": {"color": {"r": 255, "g": 0, "b": 0}},
     "set-range-percent": {"color": {"r": 255, "g": 0, "b": 0}, "start_percent": 0, "end_percent": 100},
-    "set-range-exact": {"color": {"r": 255, "g": 0, "b": 0}, "start_idx": 0, "end_idx": 10},
+    "set-range-exact": {"color": {"r": 255, "g": 0, "b": 0}, "start_index": 0, "end_index": 10},
     "effect/glow": {"color": {"r": 255, "g": 255, "b": 255}, "speed": 1.0},
     "effect/wave": {"color": {"r": 0, "g": 0, "b": 255}, "speed": 1.0},
     "effect/color-wipe": {"color": {"r": 0, "g": 0, "b": 255}, "speed": 1.0},
@@ -88,8 +88,8 @@ COMPONENT_TEMPLATES: dict[str, dict | None] = {
     "light/on": {"light": ""},
     "light/off": {"light": ""},
     "light/brightness/set": {"light": "", "brightness": 128},
-    # NDI
-    "receive/start": {"source_name": ""},
+    # NDI — `stream_name` overrides the configured receive_stream_name / send_stream_name.
+    "receive/start": {"stream_name": ""},
     "receive/stop": None,
     "send/start": {"stream_name": ""},
     "send/stop": None,
@@ -107,17 +107,19 @@ COMPONENT_TEMPLATES: dict[str, dict | None] = {
     "navigate/enter": None,
     "navigate/menu": None,
     "navigate/back": None,
-    "keystone/set": {"horizontal": 0, "vertical": 0},
-    "image-shift/set": {"horizontal": 0, "vertical": 0},
-    # viz
-    "start_arena": None,
-    "stop_arena": None,
-    "start_touchdesigner": None,
-    "stop_touchdesigner": None,
+    # projector keystone/image-shift — axis is "h" or "v"; value clamps per-axis on the device.
+    "keystone/set": {"axis": "h", "value": 0},
+    "image-shift/set": {"axis": "h", "value": 0},
+    # viz — component publishes dashed action names; underscores miss the lookup and
+    # the UI would mark these as has_body=True even though they take no payload.
+    "start-arena": None,
+    "stop-arena": None,
+    "start-touchdesigner": None,
+    "stop-touchdesigner": None,
     "restart": None,
-    # chrony
-    "start_sync": None,
-    "stop_sync": None,
+    # chrony — same dashed-action convention as viz.
+    "start-sync": None,
+    "stop-sync": None,
     # AI specialist
     "task": {"prompt": ""},
     "process_image": {"image_url": "", "prompt": ""},
