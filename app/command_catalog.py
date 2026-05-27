@@ -84,10 +84,10 @@ COMPONENT_TEMPLATES: dict[str, dict | None] = {
     "spawn": {"name": "", "command": ""},
     "kill": {"name": ""},
     "list": None,
-    # KNX
-    "light/on": {"address": ""},
-    "light/off": {"address": ""},
-    "light/brightness/set": {"address": "", "brightness": 128},
+    # KNX — `light` is the configured light name; "" or "all" fans out to every light.
+    "light/on": {"light": ""},
+    "light/off": {"light": ""},
+    "light/brightness/set": {"light": "", "brightness": 128},
     # NDI
     "receive/start": {"source_name": ""},
     "receive/stop": None,
