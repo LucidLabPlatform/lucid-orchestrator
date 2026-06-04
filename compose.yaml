@@ -1,0 +1,31 @@
+services:
+  lucid-orchestrator:
+    container_name: lucid-orchestrator
+    build: .
+    restart: unless-stopped
+    environment:
+      LUCID_MQTT_HOST: emqx
+      LUCID_MQTT_PORT: "1883"
+      LUCID_MQTT_USERNAME: ${LUCID_MQTT_USERNAME}
+      LUCID_MQTT_PASSWORD: ${LUCID_MQTT_PASSWORD}
+      LUCID_DB_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      EMQX_API_URL: http://emqx:18083/api/v5
+      EMQX_API_USERNAME: ${EMQX_API_USERNAME}
+      EMQX_API_PASSWORD: ${EMQX_API_PASSWORD}
+      LUCID_AUTH_URL: http://auth:4000
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+      auth:
+        condition: service_healthy
+        required: false
+      emqx:
+        condition: service_started
+        required: false
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3).read()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
